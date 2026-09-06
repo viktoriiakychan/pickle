@@ -1,18 +1,6 @@
-movies = [
-    {"id": "1", "title": "The Housemaid", "genre": "Horror"},
-    {"id": "2", "title": "10 Things I Hate About You", "genre": "Romance"},
-    {"id": "3", "title": "Rush Hour", "genre": "Comedy"},
-    {"id": "4", "title": "Mean Girls", "genre": "Comedy"},
-    {"id": "5", "title": "The Conjuring", "genre": "Horror"},
-    {"id": "6", "title": "La La Land", "genre": "Romance"},
-    {"id": "7", "title": "Inception", "genre": "Sci-Fi"},
-    {"id": "8", "title": "Knives Out", "genre": "Mystery"},
-    {"id": "9", "title": "The Grand Budapest Hotel", "genre": "Comedy"},
-    {"id": "10", "title": "A Quiet Place", "genre": "Horror"},
-]
-
-print("Select ur movie: [1] - yes; [0] - no")
-
+from fetch_api import get_movies, get_genres, get_movies_with_genre
+#movies = get_movies()
+genres = get_genres()
 def swipe_session(name, movies):
     matches = set()
     for movie in movies:
@@ -24,25 +12,27 @@ def swipe_session(name, movies):
 
     return matches
 
-# user1_likes = swipe_session("Olivia", movies)
-# user2_likes = swipe_session("Lily", movies)
-
-# room = {
-#     "Olivia": user1_likes,
-#     "Lily": user2_likes
-# }
-
 def get_matches(room):
     return set.intersection(*room.values())
 
+genre_names = []
 
-# matches = get_matches(room)
+for genre in genres["genres"]:
+    genre_names.append(genre["name"])
 
-# if matches:
-#     print("Matches:", matches)
-# else:
-#     print("No matches found")
-        
+print(genre_names)
+choosen_genre = str(input("Choose a genre: "))
+
+# get the acc number from tmdb for the genre
+choosen_genre_id = -1
+
+for genre in genres["genres"]:
+    if genre["name"].lower() == choosen_genre.lower():
+        choosen_genre_id = genre["id"]
+#print(choosen_genre_id)
+
+movies = get_movies_with_genre(choosen_genre_id)
+print(movies)
 
 # multiple users
 user_num = int(input("Enter user number: "))
