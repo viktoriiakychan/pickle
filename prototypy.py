@@ -46,7 +46,7 @@ if user_num != 0:
     matches = get_matches(room)
 
     if matches:
-        print("Matches:", sorted(matches))
+        print("Matches:", sorted(matches, key=int))
     else:
         print("No matches found")
 else:
