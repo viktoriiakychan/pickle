@@ -9,6 +9,7 @@ export default function Index() {
   const [genres, setGenres] = useState<{ id: string; title: string }[]>([]);
   const [movies, setMovies] = useState<{ id: string; title: string }[]>([]);
   const [selectedGenre, setSelectedGenre] = useState<{ id: string; title: string } | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     fetch(`https://api.themoviedb.org/3/genre/movie/list?language=en&api_key=${API_KEY}`)
@@ -24,30 +25,41 @@ export default function Index() {
     if (!selectedGenre) return;
 
     fetch(
-      `https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&with_genres=${selectedGenre.id}`
+      `https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&with_genres=${selectedGenre.id}&page=${page}`
     )
       .then((res) => res.json())
       .then((data) => {
-        console.log("TMDB response:", data);
         if (data.results) {
-          setMovies(data.results.map((m: any) => ({ id: String(m.id), title: m.title })));
-          setCurrentIndex(0);
-          setLiked([]);
+          const newMovies = data.results.map((m: any) => ({ id: String(m.id), title: m.title }));
+          setMovies((prev) => [...prev, ...newMovies]);
         }
       });
-  }, [selectedGenre]);
+  }, [selectedGenre, page]);
 
   const currentMovie = movies[currentIndex];
+
+  const advance = () => {
+    const nextIndex = currentIndex + 1;
+    setCurrentIndex(nextIndex);
+
+    if (nextIndex >= movies.length - 5) {
+      setPage((prev) => prev + 1);
+    }
+  };
 
   const handleLike = () => {
     if (!currentMovie) return;
     setLiked([...liked, currentMovie.title]);
-    setCurrentIndex(currentIndex + 1);
+    advance();
   };
 
   const handlePass = () => {
     if (!currentMovie) return;
-    setCurrentIndex(currentIndex + 1);
+    advance();
+  };
+
+  const handleFinish = () => {
+    setCurrentIndex(movies.length);
   };
 
   // no genre picked yet
@@ -55,7 +67,15 @@ export default function Index() {
     return (
       <View style={styles.container}>
         {genres.map((g) => (
-          <Pressable key={g.id} onPress={() => setSelectedGenre({ id: g.id, title: g.title })}>
+          <Pressable
+            key={g.id}
+            onPress={() => {
+              setSelectedGenre({ id: g.id, title: g.title });
+              setMovies([]);
+              setPage(1);
+              setCurrentIndex(0);
+            }}
+          >
             <Text style={{ color: "white" }}>{g.title}</Text>
           </Pressable>
         ))}
@@ -88,6 +108,7 @@ export default function Index() {
       <Text style={styles.title}>{currentMovie.title}</Text>
       <Button title="Pass" onPress={handlePass} />
       <Button title="Like" onPress={handleLike} />
+      <Button title="Finish" onPress={handleFinish} />
     </View>
   );
 }
