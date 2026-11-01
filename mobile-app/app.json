@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "mobile-app",
+    "backgroundColor": "#0F1A0B", 
     "slug": "mobile-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -32,7 +33,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
