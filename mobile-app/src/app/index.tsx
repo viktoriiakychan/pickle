@@ -18,6 +18,7 @@ import GenreScreen from "../components/screens/GenreScreen";
 import SwipeScreen from "../components/screens/SwipeScreen";
 import ResultsScreen from "../components/screens/ResultsScreen";
 import PickleIcon from "../components/PickleIcon";
+import ConfirmDialog from "../components/ComfirmDialog";
 import { C } from "../components/theme";
 
 import { fetchDeck, whereToWatchUrl, Movie } from "../lib/tmdb";
@@ -65,6 +66,7 @@ export default function Index() {
   const [copied, setCopied] = useState(false);
   const [dealing, setDealing] = useState(false); // host is fetching the deck
   const [myIndex, setMyIndex] = useState(0);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
 
   /* ── live room ───────────────────────────────────────────────────── */
   useEffect(() => {
@@ -129,6 +131,12 @@ export default function Index() {
     setRoom(undefined);
     setMode("landing");
     if (c) leaveRoom(c, myId).catch(() => {});
+  };
+
+  const confirmLeave = () => {
+    const msg = "Leave this room? Your friend will need a new code to play with you again.";
+    const ok = typeof window !== "undefined" && window.confirm ? window.confirm(msg) : true;
+    if (ok) handleLeave();
   };
 
   const flashCopied = () => {
@@ -250,21 +258,35 @@ export default function Index() {
           matches={sharedMatches(room)}
           onNewGenre={() => newRound(room.code)}
           onWhereToWatch={openWhereToWatch}
+          onLeave={handleLeave}
         />
       );
     }
 
     return (
-      <SwipeScreen
-        genreTitle={room.genre?.title ?? ""}
-        deck={room.deck}
-        index={myIndex}
-        friendName={name(friendId)}
-        friendIndex={friendId ? room.progress[friendId] ?? 0 : 0}
-        onBack={handleLeave}
-        onSwipe={handleSwipe}
-        onUndo={handleUndo}
-      />
+      <>
+        <SwipeScreen
+          genreTitle={room.genre?.title ?? ""}
+          deck={room.deck}
+          index={myIndex}
+          friendName={name(friendId)}
+          friendIndex={friendId ? room.progress[friendId] ?? 0 : 0}
+          onBack={() => setConfirmingLeave(true)}
+          onSwipe={handleSwipe}
+          onUndo={handleUndo}
+        />
+        <ConfirmDialog
+          visible={confirmingLeave}
+          title="Leave the room?"
+          message={`You'll lose your swipes and ${name(friendId)} won't get your matches.`}
+          confirmLabel="Leave"
+          onCancel={() => setConfirmingLeave(false)}
+          onConfirm={() => {
+            setConfirmingLeave(false);
+            handleLeave();
+          }}
+        />
+      </>
     );
   }
 

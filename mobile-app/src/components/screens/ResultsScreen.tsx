@@ -11,12 +11,14 @@ export default function ResultsScreen({
   matches,
   onNewGenre,
   onWhereToWatch,
+  onLeave
 }: {
   genreTitle: string;
   names: string[];          // host first
   matches: Movie[];         // best first
   onNewGenre: () => void;
   onWhereToWatch: (m: Movie) => void;
+  onLeave: () => void;
 }) {
   const [top, ...rest] = matches;
   const heading =
@@ -91,6 +93,9 @@ export default function ResultsScreen({
           />
         </View>
       </View>
+      <Pressable onPress={onLeave} style={{ alignSelf: "center", padding: 10 }}>
+        <Text style={{ fontFamily: F.textSemi, fontSize: 14, color: C.muted }}>Done, leave room</Text>
+      </Pressable>
     </Screen>
   );
 }

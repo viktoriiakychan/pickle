@@ -35,8 +35,23 @@ export function getMyId(): string {
   return id;
 }
 
-export const getSavedRoom = () => read("pickle.room");
-export const saveRoom = (code: string | null) => write("pickle.room", code);
+const ROOM_TTL_MS = 30 * 60 * 1000; // 30 mins
+
+/** The room you were in, only if you saved it in the last 30 mins. */
+export function getSavedRoom(): string | null {
+  const raw = read("pickle.room");
+  if (!raw) return null;
+  try {
+    const { code, at } = JSON.parse(raw);
+    if (Date.now() - at < ROOM_TTL_MS) return code;
+  } catch {}
+  write("pickle.room", null); // too old (or old format): forget it
+  return null;
+}
+
+/** Remembers the room with the time it was saved. */
+export const saveRoom = (code: string | null) =>
+  write("pickle.room", code ? JSON.stringify({ code, at: Date.now() }) : null);
 
 /** ?room=DILL42 in the URL (from a shared link), web only */
 export function getRoomFromUrl(): string | null {
