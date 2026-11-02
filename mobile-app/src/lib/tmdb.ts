@@ -59,8 +59,8 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-/** Builds the shared deck: a shuffled 20 from ~60 popular movies in a genre. */
-export async function fetchDeck(genre: Genre): Promise<Movie[]> {
+/** Builds the shared deck: a shuffled 20 from approx 60 popular movies in a genre. */
+export async function fetchDeck(genre: Genre, seen: Set<string> = new Set()): Promise<Movie[]> {
   // 3 random pages out of the top 10 (each page = 20 movies)
   const pages = [1, 2, 3].map(() => 1 + Math.floor(Math.random() * 10));
 
@@ -76,6 +76,7 @@ export async function fetchDeck(genre: Genre): Promise<Movie[]> {
   // merge pages, remove duplicates (same page can come up twice), shuffle, take 20
   const all = responses.flatMap((d) => d.results ?? []);
   const unique = [...new Map(all.map((m: any) => [m.id, m])).values()];
+  const fresh = unique.filter((m: any) => !seen.has(String(m.id)));
   const results = shuffle(unique).slice(0, DECK_SIZE);
 
   // runtime isn't in /discover, so grab it per movie (20 small requests, in parallel)

@@ -16,6 +16,7 @@ import PickleIcon from "../PickleIcon";
 import MovieDetailsSheet from "./MovieDetailsSheet";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
+import { EyeOff } from "lucide-react-native";
 
 const SWIPE_THRESHOLD = 100;
 
@@ -29,6 +30,7 @@ export default function SwipeScreen({
   onBack,
   onSwipe,
   onUndo,
+  onSeen,
 }: {
   genreTitle: string;
   deck: Movie[];
@@ -38,6 +40,7 @@ export default function SwipeScreen({
   onBack: () => void;
   onSwipe: (liked: boolean) => void;
   onUndo: () => void;
+  onSeen: () => void;
 }) {
   const total = deck.length;
   const movie: Movie | undefined = deck[index];
@@ -228,6 +231,18 @@ export default function SwipeScreen({
           <Text style={[s.bigBtnText, { color: C.bg }]}>Pick</Text>
         </Pressable>
       </View>
+      <Pressable
+          accessibilityLabel="Already seen it"
+          disabled={done}
+          onPress={() => {
+            onSeen();
+            fling(false); // counts as a pass, so the card flies away
+          }}
+          style={({ pressed }) => [s.seenBtn, done && s.off, pressed && s.pressed]}
+        >
+          <EyeOff size={15} color={C.muted} strokeWidth={2.2} />
+          <Text style={s.seenText}>Seen it already</Text>
+        </Pressable>
 
       <MovieDetailsSheet movie={details} onClose={() => setDetails(null)} />
     </Screen>
@@ -315,4 +330,20 @@ const s = StyleSheet.create({
   undoText: { fontSize: 18, color: C.muted },
   off: { opacity: 0.35 },
   pressed: { transform: [{ scale: 0.94 }] },
+
+  seenBtn: {
+  alignSelf: "center",
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 6,
+  height: 34,
+  paddingHorizontal: 14,
+  marginTop: -12,          // tucks it closer to the Pass/Pick row
+  marginBottom: 8,
+  borderRadius: 999,
+  backgroundColor: C.surface,
+  borderWidth: 1,
+  borderColor: C.chipLine,
+  },
+  seenText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
 });

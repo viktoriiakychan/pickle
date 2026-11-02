@@ -22,6 +22,7 @@ import ConfirmDialog from "../components/ComfirmDialog";
 import { C } from "../components/theme";
 
 import { fetchDeck, whereToWatchUrl, Movie } from "../lib/tmdb";
+import { markSeen, seenByPlayers } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
@@ -169,7 +170,9 @@ export default function Index() {
     if (!code || !room?.genre || dealing) return;
     setDealing(true);
     try {
-      const deck = await fetchDeck(room.genre);
+      const seen = await seenByPlayers(playerIds(room)).catch(() => new Set<string>());
+      const deck = await fetchDeck(room.genre, seen);
+
       if (!deck.length) throw new Error("no movies");
       await startSwiping(code, deck);
     } catch (e) {
@@ -185,6 +188,11 @@ export default function Index() {
     const next = myIndex + 1;
     setMyIndex(next);
     recordSwipe(code, myId, movie.id, liked, next).catch(() => {});
+  };
+
+  const handleSeen = () => {
+    const movie = room?.deck?.[myIndex];
+    if (movie) markSeen(myId, movie.id).catch(() => {});
   };
 
   const handleUndo = () => {
@@ -274,6 +282,7 @@ export default function Index() {
           onBack={() => setConfirmingLeave(true)}
           onSwipe={handleSwipe}
           onUndo={handleUndo}
+          onSeen={handleSeen}
         />
         <ConfirmDialog
           visible={confirmingLeave}
