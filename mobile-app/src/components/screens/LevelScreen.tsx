@@ -43,7 +43,7 @@ export default function LevelScreen({
       <View style={s.body}>
         <View style={{ gap: 8 }}>
           <Text style={s.title}>
-            How deep do you <Text style={{ color: C.accent }}>go?</Text>
+            How <Text style={{ color: C.accent }}>picky</Text> are you?
           </Text>
           <Text style={s.sub}>So we know whether to play it safe or dig for hidden gems.</Text>
         </View>

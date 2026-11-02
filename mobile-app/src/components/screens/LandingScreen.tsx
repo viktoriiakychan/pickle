@@ -38,9 +38,9 @@ export default function LandingScreen({
           <View style={{ gap: 12 }}>
             <Text style={s.title}>
               In a pickle?{"\n"}
-              <Text style={{ color: C.accent }}>Pick a flick.</Text>
+              <Text style={{ color: C.accent }}>Swipe your way out.</Text>
             </Text>
-            <Text style={s.sub}>Swipe with a friend. We'll show you what you both said yes to.</Text>
+            <Text style={s.sub}>Skip the endless scroll. Find tonight’s movie in a few swipes.  </Text>
           </View>
         </View>
         <View style={{ gap: 12 }}>
@@ -62,7 +62,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.6,
     color: C.cream,
   },
-  sub: { fontFamily: F.text, fontSize: 16, lineHeight: 23.2, color: C.muted, maxWidth: 260 },
+  sub: { fontFamily: F.text, fontSize: 16, lineHeight: 23.2, color: C.muted, maxWidth: 320 },
   top: { flexDirection: "row", justifyContent: "flex-end", paddingTop: 12 },
   tasteBtn: {
     flexDirection: "row",

@@ -2,11 +2,6 @@ import Svg, { Rect, Circle } from "react-native-svg";
 import { C } from "./theme";
 import type { Level } from "../lib/seen";
 
-/*
-  "How deep do you go?" as a pickle in a jar.
-  Same capsule pickle as PickleIcon (rx = half the width), open jar, green brine.
-  casual = poking out the top, regular = halfway down, nerd = at the bottom.
-*/
 export default function LevelIcon({ level, size = 44 }: { level: Level; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 40 40">
