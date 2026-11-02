@@ -3,6 +3,7 @@ const BASE = "https://api.themoviedb.org/3";
 
 export const DECK_SIZE = 20;
 export const MAX_DECK = 30; // deck can grow to this with "Seen it" replacements
+const FOR_YOU = 14; // max "recommended for you" cards per deck, the rest are popular
 
 export type Genre = { id: string; title: string };
 
@@ -89,15 +90,60 @@ async function toMovies(results: any[]): Promise<Movie[]> {
   }));
 }
 
-/** Builds the shared deck: a shuffled 20 from 60 popular movies, minus anything seen. */
-export async function fetchDeck(genre: Genre, seen: Set<string> = new Set()): Promise<Movie[]> {
-  const responses = await Promise.all(
-    [1, 2, 3].map(() => fetch(discoverUrl(genre, randomPage())).then((r) => r.json()))
+/** "If you liked X" for each favourite, only in this genre, best matches first. */
+async function recommendedFor(favs: string[], genre: Genre): Promise<any[]> {
+  const lists = await Promise.all(
+    favs.map((id) =>
+      fetch(`${BASE}/movie/${id}/recommendations?api_key=${API_KEY}`)
+        .then((r) => r.json())
+        .then((d) => d.results ?? [])
+        .catch(() => [])
+    )
   );
-  const all = responses.flatMap((d) => d.results ?? []);
-  const unique = [...new Map(all.map((m: any) => [m.id, m])).values()];
-  const fresh = unique.filter((m: any) => !seen.has(String(m.id)));
-  return toMovies(shuffle(fresh).slice(0, DECK_SIZE));
+
+  // score = how many favourites recommend this movie
+  const scores = new Map<number, { movie: any; score: number }>();
+  for (const list of lists) {
+    for (const m of list) {
+      if (!m.genre_ids?.includes(Number(genre.id))) continue; // only the room's genre
+      if ((m.vote_count ?? 0) < 200) continue;               // skip obscure ones
+      const entry = scores.get(m.id) ?? { movie: m, score: 0 };
+      entry.score += 1;
+      scores.set(m.id, entry);
+    }
+  }
+
+  // shuffle first so equal scores come out in a random order, then best score first
+  return shuffle([...scores.values()])
+    .sort((a, b) => b.score - a.score)
+    .map((e) => e.movie);
+}
+
+/** Builds the shared deck: up to 14 "for you" + popular movies, minus anything seen. */
+export async function fetchDeck(
+  genre: Genre,
+  seen: Set<string> = new Set(),
+  favs: string[] = []
+): Promise<Movie[]> {
+  const notSeen = (m: any) => !seen.has(String(m.id));
+
+  // both at the same time: recommendations + 3 random pages of popular
+  const [recs, responses] = await Promise.all([
+    favs.length ? recommendedFor(favs, genre) : Promise.resolve([]),
+    Promise.all([1, 2, 3].map(() => fetch(discoverUrl(genre, randomPage())).then((r) => r.json()))),
+  ]);
+
+  const forYou = recs.filter(notSeen).slice(0, FOR_YOU);
+  const forYouIds = new Set(forYou.map((m: any) => m.id));
+
+  const all = responses.flatMap((d: any) => d.results ?? []);
+  const popular = [...new Map(all.map((m: any) => [m.id, m])).values()].filter(
+    (m: any) => notSeen(m) && !forYouIds.has(m.id)
+  );
+
+  // "for you" first, topped up with popular, then shuffled so they're mixed together
+  const picked = [...forYou, ...shuffle(popular)].slice(0, DECK_SIZE);
+  return toMovies(shuffle(picked));
 }
 
 /** One extra movie for "Seen it", skipping anything in `exclude`. Tries 3 random pages. */

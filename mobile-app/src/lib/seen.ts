@@ -28,3 +28,13 @@ export const saveFavs = (myId: string, favs: string[]) =>
 /** Skip still saves surveyDone, so you're not asked every time. Keeps old favs. */
 export const skipTaste = (myId: string) =>
   setDoc(doc(db, "users", myId), { surveyDone: true }, { merge: true });
+
+/** Both players' seen lists (merged) and favourites (merged, no duplicates). */
+export async function roomTaste(ids: string[]): Promise<{ seen: Set<string>; favs: string[] }> {
+  const docs = await Promise.all(ids.map((id) => getDoc(doc(db, "users", id))));
+  const data = docs.map((d) => d.data() ?? {});
+  return {
+    seen: new Set(data.flatMap((d: any) => d.seen ?? [])),
+    favs: [...new Set<string>(data.flatMap((d: any) => d.favs ?? []))],
+  };
+}

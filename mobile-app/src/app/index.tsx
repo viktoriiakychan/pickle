@@ -23,7 +23,7 @@ import TasteScreen from "../components/screens/TasteScreen";
 import { C } from "../components/theme";
 
 import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
-import { markSeen, seenByPlayers, unmarkSeen, getTaste, saveFavs, skipTaste, Taste } from "../lib/seen";
+import { markSeen, seenByPlayers, unmarkSeen, getTaste, saveFavs, skipTaste, Taste, roomTaste } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
@@ -196,8 +196,11 @@ export default function Index() {
     if (!code || !room?.genre || dealing) return;
     setDealing(true);
     try {
-      const seen = await seenByPlayers(playerIds(room)).catch(() => new Set<string>());
-      const deck = await fetchDeck(room.genre, seen);
+      const { seen, favs } = await roomTaste(playerIds(room)).catch(() => ({
+        seen: new Set<string>(),
+        favs: [] as string[],
+      }));
+      const deck = await fetchDeck(room.genre, seen, favs);
 
       if (!deck.length) throw new Error("no movies");
       await startSwiping(code, deck);
