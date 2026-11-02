@@ -34,6 +34,7 @@ export type Movie = {
   overview: string;
   poster: string | null;
   backdrop: string | null;
+  tagline: string;
 };
 
 export type MovieDetails = {
@@ -103,12 +104,13 @@ async function fetchPool(genre: Genre, level: Level): Promise<any[]> {
 
 /** Turns raw TMDB results into our Movie type (runtime needs one extra request each). */
 async function toMovies(results: any[]): Promise<Movie[]> {
-  const runtimes = await Promise.all(
+  // one details request per movie: gives runtime + tagline
+  const extras = await Promise.all(
     results.map((m) =>
       fetch(`${BASE}/movie/${m.id}?api_key=${API_KEY}`)
         .then((r) => r.json())
-        .then((d) => formatRuntime(d.runtime))
-        .catch(() => "")
+        .then((d) => ({ runtime: formatRuntime(d.runtime), tagline: d.tagline ?? "" }))
+        .catch(() => ({ runtime: "", tagline: "" }))
     )
   );
   return results.map((m, i) => ({
@@ -116,7 +118,8 @@ async function toMovies(results: any[]): Promise<Movie[]> {
     title: m.title,
     year: m.release_date ? m.release_date.slice(0, 4) : "",
     rating: typeof m.vote_average === "number" ? m.vote_average.toFixed(1) : "",
-    runtime: runtimes[i],
+    runtime: extras[i].runtime,
+    tagline: extras[i].tagline,
     overview: m.overview ?? "",
     poster: img(m.poster_path, "w500"),
     backdrop: img(m.backdrop_path, "w780"),

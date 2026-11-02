@@ -14,17 +14,18 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Avatar, NavBar, Screen, Stripes } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
-import MovieDetailsSheet from "./MovieDetailsSheet";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
-import { EyeOff } from "lucide-react-native";
+import { EyeOff, Info } from "lucide-react-native";
 import ProgressAvatar from "../ProgresssAvatar";
+import CardBack from "../CardBack";
 
 const SWIPE_THRESHOLD = 100;
 
 /** ["Dill"] → "Dill", ["Dill","Brine","Spear"] → "Dill, Brine and Spear" */
 const joinNames = (ns: string[]) =>
   ns.length <= 1 ? ns.join("") : `${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}`;
+const firstSentence = (text: string) => (text.match(/^.*?[.!?](\s|$)/)?.[0] ?? text).trim();
 
 // 05 Swipe: drag the card or tap the buttons
 export default function SwipeScreen({
@@ -51,14 +52,30 @@ export default function SwipeScreen({
   const total = deck.length;
   const movie: Movie | undefined = deck[index];
   const done = index >= total;
-  const [details, setDetails] = useState<Movie | null>(null);
 
-  /* ── card motion ─────────────────────────────────────────────────── */
+  /* --- card motion ------------------------------------------------------- */
   const pan = useRef(new Animated.ValueXY()).current;
   const enter = useRef(new Animated.Value(1)).current; // 0 → 1 as a new card moves up
   const busy = useRef(false);
   const dragged = useRef(false); // so letting go of a drag doesn't count as a tap
   const exitX = Math.min(Dimensions.get("window").width, MAX_WIDTH) * 1.5;
+
+  /* -- card flip ------------------------------------------------------- */
+  const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
+  const [flipped, setFlipped] = useState(false);
+
+  const toggleFlip = () => {
+    const to = flipped ? 0 : 1;
+    setFlipped(!flipped);
+    Animated.spring(flip, { toValue: to, friction: 8, tension: 60, useNativeDriver: false }).start();
+  };
+
+  // front turns 0° → 180°, back turns 180° → 360°, so they swap places
+  const frontRotate = flip.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] });
+  const backRotate = flip.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
+  // swap visibility exactly halfway, in case a browser ignores backfaceVisibility
+  const frontOpacity = flip.interpolate({ inputRange: [0.49, 0.5], outputRange: [1, 0], extrapolate: "clamp" });
+  const backOpacity = flip.interpolate({ inputRange: [0.5, 0.51], outputRange: [0, 1], extrapolate: "clamp" });
 
   const fling = (liked: boolean, dy = 0) => {
     if (busy.current || done) return;
@@ -74,6 +91,8 @@ export default function SwipeScreen({
   // when the top card changes (swipe or undo), snap the new one into place
   useLayoutEffect(() => {
     pan.setValue({ x: 0, y: 0 });
+    flip.setValue(0);
+    setFlipped(false);
     busy.current = false;
     enter.setValue(0);
     Animated.spring(enter, { toValue: 1, friction: 7, tension: 90, useNativeDriver: false }).start();
@@ -155,7 +174,7 @@ export default function SwipeScreen({
             <Animated.View
               {...responder.panHandlers}
               style={[
-                s.card,
+                s.cardShell,
                 {
                   transform: [
                     { translateX: pan.x },
@@ -166,37 +185,72 @@ export default function SwipeScreen({
                 },
               ]}
             >
-              <Pressable
-                style={StyleSheet.absoluteFill}
-                onPressIn={() => (dragged.current = false)}
-                onPress={() => !dragged.current && setDetails(movie)}
+              {/* FRONT: poster */}
+              <Animated.View
+                pointerEvents={flipped ? "none" : "auto"}
+                style={[s.face, { opacity: frontOpacity, transform: [{ perspective: 1000 }, { rotateY: frontRotate }] }]}
               >
-                <Stripes />
-                {movie.poster && <Image source={{ uri: movie.poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
-                <LinearGradient
-                  colors={["rgba(13,17,13,0)", "rgba(13,17,13,0.96)"]}
-                  locations={[0.4, 0.82]}
+                <Pressable
                   style={StyleSheet.absoluteFill}
-                />
-                <View style={s.info}>
-                  <Text style={s.title}>{movie.title}</Text>
-                  <View style={s.meta}>
-                    {[movie.year, movie.rating && `★ ${movie.rating}`, movie.runtime]
-                      .filter(Boolean)
-                      .flatMap((part, i) => (i ? ["·", part] : [part]))
-                      .map((part, i) => (
-                        <Text key={i} style={s.metaText}>
-                          {part}
-                        </Text>
-                      ))}
+                  onPressIn={() => (dragged.current = false)}
+                  onPress={() => !dragged.current && toggleFlip()}
+                >
+                  <View style={s.posterBox}>
+                    <Stripes />
+                    {movie.poster && <Image source={{ uri: movie.poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+                    <LinearGradient
+                      colors={["rgba(22,28,22,0)", C.surface]}
+                      locations={[0.82, 1]}
+                      style={StyleSheet.absoluteFill}
+                    />
                   </View>
-                  {!!movie.overview && (
-                    <Text style={s.overview} numberOfLines={4}>
-                      {movie.overview}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
+
+                  <View style={s.info}>
+                    <View style={s.titleRow}>
+                      <Text style={[s.title, { flex: 1 }]} numberOfLines={2}>
+                        {movie.title}
+                      </Text>
+                      <Pressable
+                        accessibilityLabel="More info"
+                        hitSlop={10}
+                        onPress={toggleFlip}
+                        style={({ pressed }) => [s.infoBtn, pressed && s.pressed]}
+                      >
+                        <Info size={16} color={C.cream} strokeWidth={2.4} />
+                      </Pressable>
+                    </View>
+                    <View style={s.meta}>
+                      {[movie.year, movie.rating && `★ ${movie.rating}`, movie.runtime]
+                        .filter(Boolean)
+                        .flatMap((part, i) => (i ? ["·", part] : [part]))
+                        .map((part, i) => (
+                          <Text key={i} style={s.metaText}>
+                            {part}
+                          </Text>
+                        ))}
+                    </View>
+                    {!!(movie.tagline || movie.overview) && (
+                      <Text style={s.hook} numberOfLines={2}>
+                        {movie.tagline || firstSentence(movie.overview)}
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+              </Animated.View>
+
+              {/* BACK: details */}
+              <Animated.View
+                pointerEvents={flipped ? "auto" : "none"}
+                style={[s.face, { opacity: backOpacity, transform: [{ perspective: 1000 }, { rotateY: backRotate }] }]}
+              >
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPressIn={() => (dragged.current = false)}
+                  onPress={() => !dragged.current && toggleFlip()}
+                >
+                  <CardBack movie={movie} onFlipBack={toggleFlip} />
+                </Pressable>
+              </Animated.View>
 
               <Animated.View pointerEvents="none" style={[s.stamp, s.stampPick, { opacity: pickOpacity }]}>
                 <Text style={[s.stampText, { color: C.accent }]}>PICK</Text>
@@ -248,7 +302,6 @@ export default function SwipeScreen({
         <Text style={s.seenText}>Seen it already</Text>
       </Pressable>
 
-      <MovieDetailsSheet movie={details} onClose={() => setDetails(null)} />
     </Screen>
   );
 }
@@ -291,8 +344,8 @@ const s = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: C.surface,
   },
-  info: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 20, gap: 8 },
-  title: { fontFamily: F.displayHeavy, fontSize: 28, lineHeight: 29.4, letterSpacing: -0.56, color: C.cream },
+ info: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 18, gap: 6, backgroundColor: C.surface },
+  title: { fontFamily: F.displayHeavy, fontSize: 24, lineHeight: 26, letterSpacing: -0.48, color: C.cream },
   meta: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metaText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
   overview: { fontFamily: F.text, fontSize: 14, lineHeight: 20.3, color: C.body },
@@ -345,4 +398,25 @@ const s = StyleSheet.create({
   },
   seenText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
   people: { flexGrow: 1, justifyContent: "center", gap: 8, paddingHorizontal: 24, paddingTop: 4 },
+  hint: { fontFamily: F.textSemi, fontSize: 12, color: C.faint },
+  hook: { fontFamily: F.textSemi, fontSize: 14, lineHeight: 20, color: C.body },
+  posterBox: { flex: 1, overflow: "hidden" },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  infoBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.surface2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  cardShell: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  face: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 28,
+    overflow: "hidden",
+    backgroundColor: C.surface,
+    backfaceVisibility: "hidden",
+  },
 });
