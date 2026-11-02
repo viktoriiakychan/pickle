@@ -21,7 +21,7 @@ import PickleIcon from "../components/PickleIcon";
 import ConfirmDialog from "../components/ComfirmDialog";
 import { C } from "../components/theme";
 
-import { fetchDeck, whereToWatchUrl, Movie } from "../lib/tmdb";
+import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
 import { markSeen, seenByPlayers } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
@@ -39,6 +39,7 @@ import {
   undoSwipe,
   everyoneFinished,
   sharedMatches,
+  addToDeck
 } from "../lib/room";
 
 export default function Index() {
@@ -88,7 +89,7 @@ export default function Index() {
   }, [code, myId]);
 
   // new deck → start from wherever Firestore says we are (0 for a fresh round)
-  const deckKey = room?.deck ? room.deck.map((m) => m.id).join(",") : "";
+  const deckKey = room?.deck?.[0]?.id ?? "";
   useEffect(() => {
     setMyIndex(room?.progress?.[myId] ?? 0);
   }, [deckKey]);
@@ -190,9 +191,20 @@ export default function Index() {
     recordSwipe(code, myId, movie.id, liked, next).catch(() => {});
   };
 
-  const handleSeen = () => {
+  const handleSeen = async () => {
     const movie = room?.deck?.[myIndex];
-    if (movie) markSeen(myId, movie.id).catch(() => {});
+    if (!code || !room?.genre || !room.deck || !movie) return;
+
+    markSeen(myId, movie.id).catch(() => {});
+    if (room.deck.length >= MAX_DECK) return; // safety limit
+
+    // don't add anything already in the deck, or seen by either of you
+    const exclude = await seenByPlayers(playerIds(room)).catch(() => new Set<string>());
+    room.deck.forEach((m) => exclude.add(m.id));
+    exclude.add(movie.id);
+
+    const extra = await fetchReplacement(room.genre, exclude).catch(() => null);
+    if (extra) addToDeck(code, extra).catch(() => {});
   };
 
   const handleUndo = () => {

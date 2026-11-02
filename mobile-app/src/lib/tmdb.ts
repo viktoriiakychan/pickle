@@ -2,6 +2,7 @@ const API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 const BASE = "https://api.themoviedb.org/3";
 
 export const DECK_SIZE = 20;
+export const MAX_DECK = 30; // deck can grow to this with "Seen it" replacements
 
 export type Genre = { id: string; title: string };
 
@@ -60,36 +61,23 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /** Builds the shared deck: a shuffled 20 from approx 60 popular movies in a genre. */
-export async function fetchDeck(genre: Genre, seen: Set<string> = new Set()): Promise<Movie[]> {
-  // 3 random pages out of the top 10 (each page = 20 movies)
-  const pages = [1, 2, 3].map(() => 1 + Math.floor(Math.random() * 10));
+const discoverUrl = (genre: Genre, page: number) =>
+  `${BASE}/discover/movie?api_key=${API_KEY}&with_genres=${genre.id}` +
+  `&sort_by=popularity.desc&vote_count.gte=300&include_adult=false&page=${page}`;
 
-  const responses = await Promise.all(
-    pages.map((page) =>
-      fetch(
-        `${BASE}/discover/movie?api_key=${API_KEY}&with_genres=${genre.id}` +
-          `&sort_by=popularity.desc&vote_count.gte=300&include_adult=false&page=${page}`
-      ).then((r) => r.json())
-    )
-  );
+const randomPage = () => 1 + Math.floor(Math.random() * 10);
 
-  // merge pages, remove duplicates (same page can come up twice), shuffle, take 20
-  const all = responses.flatMap((d) => d.results ?? []);
-  const unique = [...new Map(all.map((m: any) => [m.id, m])).values()];
-  const fresh = unique.filter((m: any) => !seen.has(String(m.id)));
-  const results = shuffle(unique).slice(0, DECK_SIZE);
-
-  // runtime isn't in /discover, so grab it per movie (20 small requests, in parallel)
+/** Turns raw TMDB results into our Movie type (runtime needs one extra request each). */
+async function toMovies(results: any[]): Promise<Movie[]> {
   const runtimes = await Promise.all(
-    results.map((m: any) =>
+    results.map((m) =>
       fetch(`${BASE}/movie/${m.id}?api_key=${API_KEY}`)
         .then((r) => r.json())
         .then((d) => formatRuntime(d.runtime))
         .catch(() => "")
     )
   );
-
-  return results.map((m: any, i) => ({
+  return results.map((m, i) => ({
     id: String(m.id),
     title: m.title,
     year: m.release_date ? m.release_date.slice(0, 4) : "",
@@ -99,6 +87,30 @@ export async function fetchDeck(genre: Genre, seen: Set<string> = new Set()): Pr
     poster: img(m.poster_path, "w500"),
     backdrop: img(m.backdrop_path, "w780"),
   }));
+}
+
+/** Builds the shared deck: a shuffled 20 from 60 popular movies, minus anything seen. */
+export async function fetchDeck(genre: Genre, seen: Set<string> = new Set()): Promise<Movie[]> {
+  const responses = await Promise.all(
+    [1, 2, 3].map(() => fetch(discoverUrl(genre, randomPage())).then((r) => r.json()))
+  );
+  const all = responses.flatMap((d) => d.results ?? []);
+  const unique = [...new Map(all.map((m: any) => [m.id, m])).values()];
+  const fresh = unique.filter((m: any) => !seen.has(String(m.id)));
+  return toMovies(shuffle(fresh).slice(0, DECK_SIZE));
+}
+
+/** One extra movie for "Seen it", skipping anything in `exclude`. Tries 3 random pages. */
+export async function fetchReplacement(genre: Genre, exclude: Set<string>): Promise<Movie | null> {
+  for (let tries = 0; tries < 3; tries++) {
+    const data = await fetch(discoverUrl(genre, randomPage())).then((r) => r.json());
+    const options = (data.results ?? []).filter((m: any) => !exclude.has(String(m.id)));
+    if (options.length) {
+      const [movie] = await toMovies(shuffle(options).slice(0, 1));
+      return movie;
+    }
+  }
+  return null; // couldn't find one, the deck just stays shorter
 }
 
 export async function fetchDetails(movieId: string): Promise<MovieDetails> {

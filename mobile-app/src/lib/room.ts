@@ -164,3 +164,6 @@ export function sharedMatches(room: Room): Movie[] {
     .filter((m) => ids.every((id) => room.picks[id]?.includes(m.id)))
     .sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0));
 }
+
+export const addToDeck = (code: string, movie: Movie) =>
+  updateDoc(roomRef(code), { deck: arrayUnion(movie) });
