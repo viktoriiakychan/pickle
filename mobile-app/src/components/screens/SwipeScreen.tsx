@@ -9,38 +9,44 @@ import {
   Easing,
   Dimensions,
   StyleSheet,
+  ScrollView
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { NavBar, Screen, Stripes } from "../ui-kit";
+import { Avatar, NavBar, Screen, Stripes } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import MovieDetailsSheet from "./MovieDetailsSheet";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
 import { EyeOff } from "lucide-react-native";
+import ProgressAvatar from "../ProgresssAvatar";
 
 const SWIPE_THRESHOLD = 100;
+
+/** ["Dill"] → "Dill", ["Dill","Brine","Spear"] → "Dill, Brine and Spear" */
+const joinNames = (ns: string[]) =>
+  ns.length <= 1 ? ns.join("") : `${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}`;
 
 // 05 Swipe: drag the card or tap the buttons
 export default function SwipeScreen({
   genreTitle,
   deck,
   index,
-  friendName,
-  friendIndex,
+  others,
   onBack,
   onSwipe,
   onUndo,
   onSeen,
+  myName
 }: {
   genreTitle: string;
   deck: Movie[];
-  index: number;         // how many cards I've swiped
-  friendName: string;
-  friendIndex: number;   // how many cards my friend has swiped
+  index: number; // how many cards I've swiped
+  others: { name: string; index: number }[]; // everyone else in the room + how far they are
   onBack: () => void;
   onSwipe: (liked: boolean) => void;
   onUndo: () => void;
   onSeen: () => void;
+  myName: string;
 }) {
   const total = deck.length;
   const movie: Movie | undefined = deck[index];
@@ -99,8 +105,7 @@ export default function SwipeScreen({
   const enterScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] });
   const enterY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
 
-  const labelWidth = Math.max(28, Math.ceil(friendName.length * 6.8)); // fits "Gherkin" etc.
-  const pct = (n: number) => `${Math.min(100, (n / Math.max(total, 1)) * 100)}%` as const;
+  const waitingOn = others.filter((o) => o.index < total).map((o) => o.name);
 
   return (
     <Screen>
@@ -118,22 +123,17 @@ export default function SwipeScreen({
         }
       />
 
-      <View style={s.progress}>
-        <View style={s.progressRow}>
-          <Text style={[s.progressLabel, { width: labelWidth }]}>You</Text>
-          <View style={s.track}>
-            <View style={[s.fill, { width: pct(index), backgroundColor: C.accent }]} />
-          </View>
-        </View>
-        <View style={s.progressRow}>
-          <Text style={[s.progressLabel, { width: labelWidth }]} numberOfLines={1}>
-            {friendName}
-          </Text>
-          <View style={s.track}>
-            <View style={[s.fill, { width: pct(friendIndex), backgroundColor: C.cream }]} />
-          </View>
-        </View>
-      </View>
+      <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0 }}
+          contentContainerStyle={s.people}
+        >
+          <ProgressAvatar name={myName} label="You" progress={index / Math.max(total, 1)} color={C.accent} />
+          {others.map((o, i) => (
+            <ProgressAvatar key={i} name={o.name} label={o.name} progress={o.index / Math.max(total, 1)} color={C.cream} />
+          ))}
+        </ScrollView>
 
       <View style={s.cardArea}>
         {!done && index + 1 < total && <View style={s.backCard} />}
@@ -143,7 +143,11 @@ export default function SwipeScreen({
             <PickleIcon size={56} background={C.surface} />
             <Text style={s.waitTitle}>You're done!</Text>
             <Text style={s.waitSub}>
-              Waiting for {friendName} to finish · {Math.min(friendIndex, total)}/{total}
+              {waitingOn.length === 0
+                ? "Getting your matches…"
+                : waitingOn.length > 3
+                ? `Waiting for ${waitingOn.length} people to finish`
+                : `Waiting for ${joinNames(waitingOn)} to finish`}
             </Text>
           </View>
         ) : (
@@ -232,17 +236,17 @@ export default function SwipeScreen({
         </Pressable>
       </View>
       <Pressable
-          accessibilityLabel="Already seen it"
-          disabled={done}
-          onPress={() => {
-            onSeen();
-            fling(false); // counts as a pass, so the card flies away
-          }}
-          style={({ pressed }) => [s.seenBtn, done && s.off, pressed && s.pressed]}
-        >
-          <EyeOff size={15} color={C.muted} strokeWidth={2.2} />
-          <Text style={s.seenText}>Seen it already</Text>
-        </Pressable>
+        accessibilityLabel="Already seen it"
+        disabled={done}
+        onPress={() => {
+          onSeen();
+          fling(false); // counts as a pass, so the card flies away
+        }}
+        style={({ pressed }) => [s.seenBtn, done && s.off, pressed && s.pressed]}
+      >
+        <EyeOff size={15} color={C.muted} strokeWidth={2.2} />
+        <Text style={s.seenText}>Seen it already</Text>
+      </Pressable>
 
       <MovieDetailsSheet movie={details} onClose={() => setDetails(null)} />
     </Screen>
@@ -265,12 +269,6 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: C.muted,
   },
-
-  progress: { paddingTop: 4, paddingHorizontal: 24, gap: 8 },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  progressLabel: { width: 28, fontFamily: F.text, fontSize: 12, color: C.muted },
-  track: { flex: 1, height: 4, borderRadius: 9, backgroundColor: C.surface2, overflow: "hidden" },
-  fill: { height: "100%" },
 
   cardArea: { flex: 1, marginTop: 16, marginHorizontal: 20 },
   backCard: {
@@ -332,18 +330,19 @@ const s = StyleSheet.create({
   pressed: { transform: [{ scale: 0.94 }] },
 
   seenBtn: {
-  alignSelf: "center",
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 6,
-  height: 34,
-  paddingHorizontal: 14,
-  marginTop: -12,          // tucks it closer to the Pass/Pick row
-  marginBottom: 8,
-  borderRadius: 999,
-  backgroundColor: C.surface,
-  borderWidth: 1,
-  borderColor: C.chipLine,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    marginTop: -12, // tucks it closer to the Pass/Pick row
+    marginBottom: 8,
+    borderRadius: 999,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.chipLine,
   },
   seenText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
+  people: { flexGrow: 1, justifyContent: "center", gap: 8, paddingHorizontal: 24, paddingTop: 4 },
 });

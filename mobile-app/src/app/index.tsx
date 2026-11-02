@@ -275,6 +275,10 @@ export default function Index() {
     const friendId = ids.find((id) => id !== myId);
     const hostName = name(room.hostId);
     const names = ids.map((id) => room.players[id].name);
+    const others = ids
+      .filter((id) => id !== myId)
+      .map((id) => ({ name: room.players[id].name, index: room.progress[id] ?? 0 }));
+    const group = others.length > 1;
 
     if (room.stage === "lobby") {
       return (
@@ -331,10 +335,10 @@ export default function Index() {
           genreTitle={room.genre?.title ?? ""}
           deck={room.deck}
           index={myIndex}
-          friendName={name(friendId)}
-          friendIndex={friendId ? room.progress[friendId] ?? 0 : 0}
+          others={others}
           onBack={() => setConfirmingLeave(true)}
           onSwipe={handleSwipe}
+          myName={name(myId)}
           onUndo={handleUndo}
           onSeen={handleSeen}
         />

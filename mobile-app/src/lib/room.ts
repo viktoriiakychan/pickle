@@ -28,7 +28,7 @@ import {
 import { db } from "../firebaseConfig";
 import type { Genre, Movie } from "./tmdb";
 
-export const MAX_PLAYERS = 2;
+export const MAX_PLAYERS = 10;
 
 export type Player = { name: string; joinedAt: number };
 export type Stage = "lobby" | "genre" | "swiping";
@@ -45,7 +45,10 @@ export type Room = {
 
 // Players get a pickle nickname so the screens can say "Dill" and "Gherkin"
 // without a sign-up step. Swap this for a name input whenever you like.
-const NAMES = ["Dill", "Gherkin", "Cornichon", "Brine", "Relish", "Spear", "Crunch", "Kosher"];
+const NAMES = [
+  "Dill", "Gherkin", "Cornichon", "Brine", "Relish", "Spear",
+  "Crunch", "Kosher", "Zest", "Snap", "Tang", "Sour",
+];
 const CODE_WORDS = ["DILL", "BRIN", "SOUR", "CUKE", "ZEST", "SNAP", "TANG", "JARS", "PICK", "CRNC"];
 
 const roomRef = (code: string) => doc(db, "rooms", code);
