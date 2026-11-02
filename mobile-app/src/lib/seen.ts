@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { shuffle } from "./tmdb";
 
 /** adds a movie to this device's "seen" list (arrayUnion = no duplicates). */
 export const markSeen = (myId: string, movieId: string) =>
@@ -21,24 +22,32 @@ export type Level = "casual" | "regular" | "nerd";
 export type Taste = { favs: string[]; level: Level | null; done: boolean };
 
 const LEVEL_ORDER: Level[] = ["casual", "regular", "nerd"];
+const RECENT_LIKES = 5; // per person: only your latest picks count
+const MAX_SEEDS = 20;   // cap on recommendation requests per deck
 
-/** Both players' seen lists + favourites (merged), and the room's level (the less picky one wins). */
+/** Seen lists + favourites/recent likes (merged), and the room's level (the less picky one wins). */
 export async function roomTaste(
   ids: string[]
 ): Promise<{ seen: Set<string>; favs: string[]; level: Level }> {
   const docs = await Promise.all(ids.map((id) => getDoc(doc(db, "users", id))));
   const data = docs.map((d) => d.data() ?? {});
   const levels = data.map((d: any) => d.level).filter(Boolean) as Level[];
+
+  // favourites + each person's most recent likes (arrayUnion adds to the end, so last = newest)
+  const seeds = [
+    ...new Set<string>(
+      data.flatMap((d: any) => [...(d.favs ?? []), ...(d.liked ?? []).slice(-RECENT_LIKES)])
+    ),
+  ];
+
   return {
     seen: new Set(data.flatMap((d: any) => d.seen ?? [])),
-    favs: [...new Set<string>(data.flatMap((d: any) => d.favs ?? []))],
+    favs: seeds.length > MAX_SEEDS ? shuffle(seeds).slice(0, MAX_SEEDS) : seeds,
     level: levels.length
-      ? LEVEL_ORDER[Math.min(...levels.map((l) => LEVEL_ORDER.indexOf(l)))] // finds the least picky one
+      ? LEVEL_ORDER[Math.min(...levels.map((l) => LEVEL_ORDER.indexOf(l)))]
       : "casual",
   };
 }
-
-
 
 
 /** Your saved answers, and whether you've finished (or skipped) the survey. */
@@ -56,3 +65,11 @@ export const saveLevel = (myId: string, level: Level) =>
 /** Finished or skipped: don't show the survey automatically again. */
 export const markTasteDone = (myId: string) =>
   setDoc(doc(db, "users", myId), { surveyDone: true }, { merge: true });
+
+/** Remember a movie you picked (used as a taste signal for future decks). */
+export const markLiked = (myId: string, movieId: string) =>
+  setDoc(doc(db, "users", myId), { liked: arrayUnion(movieId) }, { merge: true });
+
+/** Undo of a Pick takes it back off. */
+export const unmarkLiked = (myId: string, movieId: string) =>
+  updateDoc(doc(db, "users", myId), { liked: arrayRemove(movieId) });

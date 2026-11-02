@@ -10,11 +10,13 @@ export default function LandingScreen({
   onJoin,
   creating,
   onEditTaste,
+  onSolo,
 }: {
   onCreate: () => void;
   onJoin: () => void;
   creating?: boolean;
   onEditTaste?: () => void;
+  onSolo: () => void;
 }) {
   return (
     <Screen>
@@ -46,6 +48,11 @@ export default function LandingScreen({
         <View style={{ gap: 12 }}>
           <Button label={creating ? "Making your room…" : "Create a room"} onPress={onCreate} />
           <Button label="Join with a code" kind="outline" onPress={onJoin} />
+          <Pressable onPress={onSolo} disabled={creating} style={s.soloBtn} hitSlop={8}>
+            <Text style={s.soloText}>
+              or <Text style={{ color: C.cream, textDecorationLine: "underline" }}>swipe solo</Text>
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Screen>
@@ -74,5 +81,7 @@ const s = StyleSheet.create({
     backgroundColor: C.surface,
   },
   tasteText: { fontFamily: F.textSemi, fontSize: 13, color: C.cream },
+  soloBtn: { alignSelf: "center", paddingVertical: 6 },
+  soloText: { fontFamily: F.textSemi, fontSize: 14, color: C.muted },
 });
 

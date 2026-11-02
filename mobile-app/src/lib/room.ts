@@ -41,6 +41,7 @@ export type Room = {
   deck: Movie[] | null;
   progress: Record<string, number>;
   picks: Record<string, string[]>;
+  solo?: boolean;
 };
 
 // Players get a pickle nickname so the screens can say "Dill" and "Gherkin"
@@ -64,7 +65,7 @@ export function playerIds(room: Room): string[] {
   });
 }
 
-export async function createRoom(myId: string): Promise<string> {
+export async function createRoom(myId: string, solo = false): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeCode();
     const ref = roomRef(code);
@@ -75,7 +76,8 @@ export async function createRoom(myId: string): Promise<string> {
       hostId: myId,
       createdAt: serverTimestamp(),
       players: { [myId]: { name: pick(NAMES), joinedAt: Date.now() } },
-      stage: "lobby",
+      stage: solo ? "genre" : "lobby", // solo goes straight to picking a genre
+      solo: solo,                      // true = one-person game, nobody can join
       genre: null,
       deck: null,
       progress: {},
@@ -93,6 +95,7 @@ export async function joinRoom(code: string, myId: string): Promise<void> {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("No room with that code. Check it and try again.");
     const room = snap.data() as Room;
+    if (room.solo) throw new Error("That's someone's solo game, it can't be joined.");
     if (room.players[myId]) return; // already in (e.g. rejoining after a refresh)
     const ids = Object.keys(room.players);
     if (ids.length >= MAX_PLAYERS) throw new Error("That room is full.");
@@ -160,13 +163,21 @@ export function everyoneFinished(room: Room): boolean {
   return ids.length > 0 && ids.every((id) => (room.progress[id] ?? 0) >= room.deck!.length);
 }
 
-/** Movies everyone picked, best rated first. */
-export function sharedMatches(room: Room): Movie[] {
-  const ids = playerIds(room);
-  return (room.deck ?? [])
-    .filter((m) => ids.every((id) => room.picks[id]?.includes(m.id)))
-    .sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0));
-}
-
 export const addToDeck = (code: string, movie: Movie) =>
   updateDoc(roomRef(code), { deck: arrayUnion(movie) });
+
+export type Match = { movie: Movie; yes: number; of: number };
+
+/** Movies more than half the room said yes to (2 people = both, solo = your picks). Most yeses first, then rating. */
+export function groupMatches(room: Room): Match[] {
+  const ids = playerIds(room);
+  const need = Math.min(ids.length, Math.max(2, Math.floor(ids.length / 2) + 1));
+  return (room.deck ?? [])
+    .map((movie) => ({
+      movie,
+      yes: ids.filter((id) => room.picks[id]?.includes(movie.id)).length,
+      of: ids.length,
+    }))
+    .filter((m) => m.yes >= need)
+    .sort((a, b) => b.yes - a.yes || Number(b.movie.rating || 0) - Number(a.movie.rating || 0));
+}

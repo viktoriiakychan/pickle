@@ -9,29 +9,42 @@ export default function ResultsScreen({
   genreTitle,
   names,
   matches,
+  votes,
+  groupSize,
   onNewGenre,
   onWhereToWatch,
-  onLeave
+  onLeave,
 }: {
   genreTitle: string;
-  names: string[];          // host first
-  matches: Movie[];         // best first
+  names: string[];                 // host first
+  matches: Movie[];                // best first
+  votes: Record<string, number>;   // movie id → how many said yes
+  groupSize: number;               // how many people played (1 = solo)
   onNewGenre: () => void;
   onWhereToWatch: (m: Movie) => void;
   onLeave: () => void;
-}) {
+}) 
+{
   const [top, ...rest] = matches;
+  const solo = groupSize === 1;
+  const count = `${matches.length} ${matches.length === 1 ? "movie" : "movies"}`;
   const heading =
     matches.length === 0
-      ? "No matches this time"
-      : `You matched on ${matches.length} ${matches.length === 1 ? "movie" : "movies"}`;
+      ? solo ? "Nothing caught your eye" : "No matches this time"
+      : solo ? `You picked ${count}` : `You matched on ${count}`;
+
+  // vote label, only for 3+ people (with 2, every match is "both")
+  const votesLabel = (m: Movie) =>
+    groupSize <= 2 ? "" : votes[m.id] === groupSize ? "Everyone's in" : `${votes[m.id]} of ${groupSize} said yes`;
+  const meta = (m: Movie, withRuntime = true) =>
+    [metaLine(m, withRuntime), votesLabel(m)].filter(Boolean).join(" · ");
 
   return (
     <Screen>
       <View style={s.body}>
         <View style={{ gap: 6 }}>
           <Text style={s.kicker}>
-            {genreTitle} · {names.join(" + ")}
+            {genreTitle} · {solo ? "Solo" : names.length > 3 ? `${names.length} pickles` : names.join(" + ")}
           </Text>
           <Text style={s.heading}>{heading}</Text>
         </View>
@@ -55,11 +68,14 @@ export default function ResultsScreen({
                 <Text style={s.heroTitle} numberOfLines={2}>
                   {top.title}
                 </Text>
-                <Text style={s.heroMeta}>{metaLine(top)}</Text>
+                <Text style={s.heroMeta}>{meta(top)}</Text>
               </View>
             </Pressable>
           ) : (
-            <Text style={s.empty}>Nothing you both said yes to. Try another genre?</Text>
+            <Text style={s.empty}>
+              {solo ? "You passed on everything." : groupSize > 2 ? "Nothing most of you said yes to." : "Nothing you both said yes to."}{" "}
+              Try another genre?
+            </Text>
           )}
 
           {rest.length > 0 && (
@@ -74,7 +90,7 @@ export default function ResultsScreen({
                     <Text style={s.rowTitle} numberOfLines={1}>
                       {m.title}
                     </Text>
-                    <Text style={s.rowMeta}>{metaLine(m, false)}</Text>
+                    <Text style={s.rowMeta}>{meta(m, false)}</Text>
                   </View>
                 </Pressable>
               ))}

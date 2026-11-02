@@ -14,6 +14,7 @@ export default function GenreScreen({
   onBack,
   onSelect,
   onStart,
+  solo,
 }: {
   isHost: boolean;
   hostName: string;
@@ -24,6 +25,7 @@ export default function GenreScreen({
   onBack: () => void;
   onSelect: (g: Genre) => void;
   onStart: () => void;
+  solo?: boolean;
 }) {
   const presence = (
     <View style={s.presence}>
@@ -46,12 +48,16 @@ export default function GenreScreen({
 
   return (
     <Screen>
-      <NavBar onBack={onBack} center={presence} />
+      <NavBar onBack={onBack} center={solo ? undefined : presence} />
       <View style={s.body}>
         <View style={{ gap: 8 }}>
           <Text style={s.title}>What are we in the mood for?</Text>
           <Text style={s.sub}>
-            {isHost ? `${friendName} sees your pick as you choose.` : `${hostName} is picking. You'll see it here.`}
+            {solo
+              ? "Pick what you're in the mood for."
+              : isHost
+              ? `${friendName} sees your pick as you choose.`
+              : `${hostName} is picking. You'll see it here.`}
           </Text>
         </View>
 

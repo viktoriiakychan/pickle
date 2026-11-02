@@ -24,7 +24,9 @@ import { C } from "../components/theme";
 import LevelScreen from "../components/screens/LevelScreen";
 
 import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
-import { markSeen, seenByPlayers, unmarkSeen, getTaste, saveFavs, saveLevel, Taste, roomTaste, markTasteDone, Level } from "../lib/seen";
+import { markSeen, seenByPlayers, unmarkSeen, 
+    getTaste, saveFavs, saveLevel, Taste, roomTaste,
+    markTasteDone, Level, markLiked, unmarkLiked } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
@@ -40,9 +42,9 @@ import {
   recordSwipe,
   undoSwipe,
   everyoneFinished,
-  sharedMatches,
-  addToDeck
-} from "../lib/room";
+  addToDeck,
+  groupMatches
+} from "../lib/room"; 
 
 const NO_TASTE = () => ({ seen: new Set<string>(), favs: [] as string[], level: "casual" as Level });
 
@@ -125,6 +127,18 @@ export default function Index() {
     } catch (e) {
       console.warn("createRoom failed", e);
       (globalThis as any).alert?.("Couldn't create a room. Check your connection and try again.");
+    }
+    setCreating(false);
+  };
+
+  const handleSolo = async () => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      enterRoom(await createRoom(myId, true));
+    } catch (e) {
+      console.warn("createRoom (solo) failed", e);
+      (globalThis as any).alert?.("Couldn't start. Check your connection and try again.");
     }
     setCreating(false);
   };
@@ -224,6 +238,7 @@ export default function Index() {
     const next = myIndex + 1;
     setMyIndex(next);
     recordSwipe(code, myId, movie.id, liked, next).catch(() => {});
+    if (liked) markLiked(myId, movie.id).catch(() => {});
   };
 
   const handleSeen = async () => {
@@ -246,6 +261,8 @@ export default function Index() {
   const handleUndo = () => {
     const prev = room?.deck?.[myIndex - 1];
     if (!code || !prev) return;
+
+    if (room?.picks?.[myId]?.includes(prev.id)) unmarkLiked(myId, prev.id).catch(() => {});
 
     if (seenThisRound.current.has(prev.id)) {
       seenThisRound.current.delete(prev.id);
@@ -278,7 +295,9 @@ export default function Index() {
     const others = ids
       .filter((id) => id !== myId)
       .map((id) => ({ name: room.players[id].name, index: room.progress[id] ?? 0 }));
+    
     const group = others.length > 1;
+    const solo = !!room.solo;
 
     if (room.stage === "lobby") {
       return (
@@ -309,6 +328,7 @@ export default function Index() {
           playerNames={names}
           selected={room.genre}
           loading={dealing}
+          solo={solo}
           onBack={handleLeave}
           onSelect={(g) => chooseGenre(room.code, g)}
           onStart={handleStart}
@@ -317,11 +337,14 @@ export default function Index() {
     }
 
     if (everyoneFinished(room)) {
+      const matches = groupMatches(room);
       return (
         <ResultsScreen
           genreTitle={room.genre?.title ?? ""}
           names={names}
-          matches={sharedMatches(room)}
+          matches={matches.map((m) => m.movie)}
+          votes={Object.fromEntries(matches.map((m) => [m.movie.id, m.yes]))}
+          groupSize={ids.length}
           onNewGenre={() => newRound(room.code)}
           onWhereToWatch={openWhereToWatch}
           onLeave={handleLeave}
@@ -345,7 +368,11 @@ export default function Index() {
         <ConfirmDialog
           visible={confirmingLeave}
           title="Leave the room?"
-          message={`You'll lose your swipes and ${name(friendId)} won't get your matches.`}
+          message={
+            solo
+              ? "You'll lose your swipes so far."
+              : `You'll lose your swipes and ${group ? "the group" : name(friendId)} won't get your matches.`
+          }
           confirmLabel="Leave"
           onCancel={() => setConfirmingLeave(false)}
           onConfirm={() => {
@@ -395,6 +422,7 @@ export default function Index() {
       creating={creating}
       onCreate={handleCreate}
       onJoin={() => setMode("join")}
+      onSolo={handleSolo}
       onEditTaste={() => setTasteStep("favs")}
     />
   );
