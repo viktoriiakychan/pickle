@@ -44,6 +44,8 @@ import {
   addToDeck
 } from "../lib/room";
 
+const NO_TASTE = () => ({ seen: new Set<string>(), favs: [] as string[], level: "casual" as Level });
+
 export default function Index() {
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
@@ -204,11 +206,8 @@ export default function Index() {
     if (!code || !room?.genre || dealing) return;
     setDealing(true);
     try {
-      const { seen, favs } = await roomTaste(playerIds(room)).catch(() => ({
-        seen: new Set<string>(),
-        favs: [] as string[],
-      }));
-      const deck = await fetchDeck(room.genre, seen, favs);
+      const { seen, favs, level } = await roomTaste(playerIds(room)).catch(NO_TASTE);
+      const deck = await fetchDeck(room.genre, seen, favs, level);
 
       if (!deck.length) throw new Error("no movies");
       await startSwiping(code, deck);
@@ -236,11 +235,11 @@ export default function Index() {
     if (room.deck.length >= MAX_DECK) return; // safety limit
 
     // don't add anything already in the deck, or seen by either of you
-    const exclude = await seenByPlayers(playerIds(room)).catch(() => new Set<string>());
+    const { seen: exclude, level } = await roomTaste(playerIds(room)).catch(NO_TASTE);
     room.deck.forEach((m) => exclude.add(m.id));
     exclude.add(movie.id);
 
-    const extra = await fetchReplacement(room.genre, exclude).catch(() => null);
+    const extra = await fetchReplacement(room.genre, exclude, level).catch(() => null);
     if (extra) addToDeck(code, extra).catch(() => {});
   };
 

@@ -1,3 +1,5 @@
+import type { Level } from "./seen";
+
 const API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 const BASE = "https://api.themoviedb.org/3";
 
@@ -61,12 +63,43 @@ export function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-/** Builds the shared deck: a shuffled 20 from approx 60 popular movies in a genre. */
-const discoverUrl = (genre: Genre, page: number) =>
-  `${BASE}/discover/movie?api_key=${API_KEY}&with_genres=${genre.id}` +
-  `&sort_by=popularity.desc&vote_count.gte=300&include_adult=false&page=${page}`;
+/** How each "picky" level changes what we ask TMDB for. */
+const LEVELS: Record<
+  Level,
+  { sort: string; minVotes: number; minRating: number; pages: [number, number]; englishOnly: boolean }
+> = {
+  casual: { sort: "popularity.desc", minVotes: 1000, minRating: 0, pages: [1, 5], englishOnly: true },
+  regular: { sort: "popularity.desc", minVotes: 300, minRating: 6.8, pages: [3, 15], englishOnly: false },
+  nerd: { sort: "vote_average.desc", minVotes: 150, minRating: 7.3, pages: [1, 15], englishOnly: false },
+};
 
-const randomPage = () => 1 + Math.floor(Math.random() * 10);
+const discoverUrl = (genre: Genre, level: Level, page: number) => {
+  const c = LEVELS[level];
+  return (
+    `${BASE}/discover/movie?api_key=${API_KEY}&with_genres=${genre.id}&include_adult=false` +
+    `&sort_by=${c.sort}&vote_count.gte=${c.minVotes}&vote_average.gte=${c.minRating}` +
+    (c.englishOnly ? "&with_original_language=en" : "") +
+    `&page=${page}`
+  );
+};
+
+/** ~60 movies for this genre + level, from random pages that actually exist. */
+async function fetchPool(genre: Genre, level: Level): Promise<any[]> {
+  const [lo, hi] = LEVELS[level].pages;
+
+  // page 1 tells us how many pages exist for this genre + level
+  const first = await fetch(discoverUrl(genre, level, 1)).then((r) => r.json());
+  const total = Math.min(first.total_pages ?? 1, 500); // TMDB never goes past page 500
+  const from = lo <= total ? lo : 1;
+  const to = Math.max(from, Math.min(hi, total));
+  const pages = [1, 2, 3].map(() => from + Math.floor(Math.random() * (to - from + 1)));
+
+  const responses = await Promise.all(pages.map((p) => fetch(discoverUrl(genre, level, p)).then((r) => r.json())));
+  let all = responses.flatMap((d: any) => d.results ?? []);
+  if (all.length < DECK_SIZE) all = [...all, ...(first.results ?? [])]; // small genre: use page 1 too
+
+  return [...new Map(all.map((m: any) => [m.id, m])).values()];
+}
 
 /** Turns raw TMDB results into our Movie type (runtime needs one extra request each). */
 async function toMovies(results: any[]): Promise<Movie[]> {
@@ -91,7 +124,8 @@ async function toMovies(results: any[]): Promise<Movie[]> {
 }
 
 /** "If you liked X" for each favourite, only in this genre, best matches first. */
-async function recommendedFor(favs: string[], genre: Genre): Promise<any[]> {
+async function recommendedFor(favs: string[], genre: Genre, level: Level): Promise<any[]> {
+  const c = LEVELS[level];
   const lists = await Promise.all(
     favs.map((id) =>
       fetch(`${BASE}/movie/${id}/recommendations?api_key=${API_KEY}`)
@@ -106,7 +140,9 @@ async function recommendedFor(favs: string[], genre: Genre): Promise<any[]> {
   for (const list of lists) {
     for (const m of list) {
       if (!m.genre_ids?.includes(Number(genre.id))) continue; // only the room's genre
-      if ((m.vote_count ?? 0) < 200) continue;               // skip obscure ones
+      if ((m.vote_count ?? 0) < c.minVotes) continue;                   // too obscure for this level
+      if ((m.vote_average ?? 0) < c.minRating) continue;                // not rated well enough
+      if (c.englishOnly && m.original_language !== "en") continue;      // casual = English only
       const entry = scores.get(m.id) ?? { movie: m, score: 0 };
       entry.score += 1;
       scores.set(m.id, entry);
@@ -119,44 +155,40 @@ async function recommendedFor(favs: string[], genre: Genre): Promise<any[]> {
     .map((e) => e.movie);
 }
 
-/** Builds the shared deck: up to 14 "for you" + popular movies, minus anything seen. */
+/** Builds the shared deck: up to 14 "for you" + movies for this level, minus anything seen. */
 export async function fetchDeck(
   genre: Genre,
   seen: Set<string> = new Set(),
-  favs: string[] = []
+  favs: string[] = [],
+  level: Level = "casual"
 ): Promise<Movie[]> {
   const notSeen = (m: any) => !seen.has(String(m.id));
 
-  // both at the same time: recommendations + 3 random pages of popular
-  const [recs, responses] = await Promise.all([
-    favs.length ? recommendedFor(favs, genre) : Promise.resolve([]),
-    Promise.all([1, 2, 3].map(() => fetch(discoverUrl(genre, randomPage())).then((r) => r.json()))),
+  const [recs, pool] = await Promise.all([
+    favs.length ? recommendedFor(favs, genre, level) : Promise.resolve([]),
+    fetchPool(genre, level),
   ]);
 
   const forYou = recs.filter(notSeen).slice(0, FOR_YOU);
   const forYouIds = new Set(forYou.map((m: any) => m.id));
+  const rest = pool.filter((m: any) => notSeen(m) && !forYouIds.has(m.id));
 
-  const all = responses.flatMap((d: any) => d.results ?? []);
-  const popular = [...new Map(all.map((m: any) => [m.id, m])).values()].filter(
-    (m: any) => notSeen(m) && !forYouIds.has(m.id)
-  );
+  const picked = [...forYou, ...shuffle(rest)].slice(0, DECK_SIZE);
 
-  // "for you" first, topped up with popular, then shuffled so they're mixed together
-  const picked = [...forYou, ...shuffle(popular)].slice(0, DECK_SIZE);
+  console.log(level, picked.map((m: any) => `${m.title} (${m.vote_count} votes)`));
   return toMovies(shuffle(picked));
 }
 
-/** One extra movie for "Seen it", skipping anything in `exclude`. Tries 3 random pages. */
-export async function fetchReplacement(genre: Genre, exclude: Set<string>): Promise<Movie | null> {
-  for (let tries = 0; tries < 3; tries++) {
-    const data = await fetch(discoverUrl(genre, randomPage())).then((r) => r.json());
-    const options = (data.results ?? []).filter((m: any) => !exclude.has(String(m.id)));
-    if (options.length) {
-      const [movie] = await toMovies(shuffle(options).slice(0, 1));
-      return movie;
-    }
-  }
-  return null; // couldn't find one, the deck just stays shorter
+/** One extra movie for "Seen it", at the room's level, skipping anything in `exclude`. */
+export async function fetchReplacement(
+  genre: Genre,
+  exclude: Set<string>,
+  level: Level = "casual"
+): Promise<Movie | null> {
+  const options = (await fetchPool(genre, level)).filter((m: any) => !exclude.has(String(m.id)));
+  if (!options.length) return null;
+  const [movie] = await toMovies(shuffle(options).slice(0, 1));
+  return movie;
 }
 
 export async function fetchDetails(movieId: string): Promise<MovieDetails> {
