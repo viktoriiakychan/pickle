@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View, Share, Linking, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useFonts } from "expo-font";
@@ -22,7 +22,7 @@ import ConfirmDialog from "../components/ComfirmDialog";
 import { C } from "../components/theme";
 
 import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
-import { markSeen, seenByPlayers } from "../lib/seen";
+import { markSeen, seenByPlayers, unmarkSeen } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
@@ -69,6 +69,8 @@ export default function Index() {
   const [dealing, setDealing] = useState(false); // host is fetching the deck
   const [myIndex, setMyIndex] = useState(0);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+
+  const seenThisRound = useRef(new Set<string>()); // movies I tapped "Seen it" on, so Undo can take it back
 
   /* ── live room ───────────────────────────────────────────────────── */
   useEffect(() => {
@@ -196,6 +198,7 @@ export default function Index() {
     if (!code || !room?.genre || !room.deck || !movie) return;
 
     markSeen(myId, movie.id).catch(() => {});
+    seenThisRound.current.add(movie.id);
     if (room.deck.length >= MAX_DECK) return; // safety limit
 
     // don't add anything already in the deck, or seen by either of you
@@ -210,6 +213,12 @@ export default function Index() {
   const handleUndo = () => {
     const prev = room?.deck?.[myIndex - 1];
     if (!code || !prev) return;
+
+    if (seenThisRound.current.has(prev.id)) {
+      seenThisRound.current.delete(prev.id);
+      unmarkSeen(myId, prev.id).catch(() => {});
+    }
+    
     const back = myIndex - 1;
     setMyIndex(back);
     undoSwipe(code, myId, prev.id, back).catch(() => {});
