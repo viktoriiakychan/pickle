@@ -19,10 +19,11 @@ import SwipeScreen from "../components/screens/SwipeScreen";
 import ResultsScreen from "../components/screens/ResultsScreen";
 import PickleIcon from "../components/PickleIcon";
 import ConfirmDialog from "../components/ComfirmDialog";
+import TasteScreen from "../components/screens/TasteScreen";
 import { C } from "../components/theme";
 
 import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
-import { markSeen, seenByPlayers, unmarkSeen } from "../lib/seen";
+import { markSeen, seenByPlayers, unmarkSeen, getTaste, saveFavs, skipTaste, Taste } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
@@ -72,7 +73,10 @@ export default function Index() {
 
   const seenThisRound = useRef(new Set<string>()); // movies I tapped "Seen it" on, so Undo can take it back
 
-  /* ── live room ───────────────────────────────────────────────────── */
+  const [taste, setTaste] = useState<Taste | undefined>(undefined); // undefined = still loading
+  const [editingTaste, setEditingTaste] = useState(false);
+
+  /* --- live room --------------------------------------- */
   useEffect(() => {
     if (!code) {
       setRoom(undefined);
@@ -89,6 +93,13 @@ export default function Index() {
       setRoom(r);
     });
   }, [code, myId]);
+
+  /* --- taste profile ------------------------------------ */
+  useEffect(() => {
+    getTaste(myId)
+      .then(setTaste)
+      .catch(() => setTaste({ favs: [], done: true })); // offline: don't block the app
+  }, [myId]);
 
   // new deck → start from wherever Firestore says we are (0 for a fresh round)
   const deckKey = room?.deck?.[0]?.id ?? "";
@@ -113,6 +124,18 @@ export default function Index() {
       (globalThis as any).alert?.("Couldn't create a room. Check your connection and try again.");
     }
     setCreating(false);
+  };
+
+  const handleTasteDone = (favs: string[]) => {
+    setTaste({ favs, done: true });
+    setEditingTaste(false);
+    saveFavs(myId, favs).catch(() => {});
+  };
+
+  const handleTasteSkip = () => {
+    setTaste((t) => ({ favs: t?.favs ?? [], done: true }));
+    setEditingTaste(false);
+    skipTaste(myId).catch(() => {});
   };
 
   const handleJoin = async (c: string) => {
@@ -218,7 +241,7 @@ export default function Index() {
       seenThisRound.current.delete(prev.id);
       unmarkSeen(myId, prev.id).catch(() => {});
     }
-    
+
     const back = myIndex - 1;
     setMyIndex(back);
     undoSwipe(code, myId, prev.id, back).catch(() => {});
@@ -226,8 +249,8 @@ export default function Index() {
 
   const openWhereToWatch = (m: Movie) => Linking.openURL(whereToWatchUrl(m.id));
 
-  /* ── screens ─────────────────────────────────────────────────────── */
-  if (!fontsLoaded || (code && room === undefined)) {
+  /* ------ screens ------------------------------------------------------- */
+  if (!fontsLoaded || (code && room === undefined) || taste === undefined) {
     return (
       <View style={s.splash}>
         <PickleIcon size={56} />
@@ -320,6 +343,17 @@ export default function Index() {
     );
   }
 
+  if (editingTaste || (!taste.done && mode === "landing")) {
+    return (
+      <TasteScreen
+        initial={taste.favs}
+        editing={editingTaste}
+        onDone={handleTasteDone}
+        onSkip={handleTasteSkip}
+      />
+    );
+  }
+
   if (mode === "join") {
     return (
       <JoinScreen
@@ -335,7 +369,14 @@ export default function Index() {
     );
   }
 
-  return <LandingScreen creating={creating} onCreate={handleCreate} onJoin={() => setMode("join")} />;
+  return (
+    <LandingScreen
+      creating={creating}
+      onCreate={handleCreate}
+      onJoin={() => setMode("join")}
+      onEditTaste={() => setEditingTaste(true)}
+    />
+  );
 }
 
 const s = StyleSheet.create({

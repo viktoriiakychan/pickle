@@ -51,7 +51,7 @@ const formatRuntime = (mins?: number) => {
   return h ? `${h}h ${m}m` : `${m}m`;
 };
 
-function shuffle<T>(arr: T[]): T[] {
+export function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -156,3 +156,18 @@ export const providerUrl = (provider: string, title: string, movieId: string) =>
   const build = SEARCH_URLS[provider];
   return build ? build(encodeURIComponent(title)) : whereToWatchUrl(movieId);
 };
+
+export type PosterInfo = { id: string; title: string; poster: string | null };
+
+/** Poster + title for a list of movie IDs (used by the taste screen). */
+export async function fetchPosters(ids: string[]): Promise<Record<string, PosterInfo>> {
+  const list = await Promise.all(
+    ids.map((id) =>
+      fetch(`${BASE}/movie/${id}?api_key=${API_KEY}`)
+        .then((r) => r.json())
+        .then((d) => ({ id, title: d.title ?? "", poster: img(d.poster_path, "w342") }))
+        .catch(() => ({ id, title: "", poster: null }))
+    )
+  );
+  return Object.fromEntries(list.map((p) => [p.id, p]));
+}

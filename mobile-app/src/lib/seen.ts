@@ -13,3 +13,18 @@ export async function seenByPlayers(ids: string[]): Promise<Set<string>> {
 /** Takes a movie back off this device's "seen" list (for Undo). */
 export const unmarkSeen = (myId: string, movieId: string) =>
   updateDoc(doc(db, "users", myId), { seen: arrayRemove(movieId) });
+
+export type Taste = { favs: string[]; done: boolean };
+
+/** Your saved favourites, and whether you've done (or skipped) the survey. */
+export async function getTaste(myId: string): Promise<Taste> {
+  const d = (await getDoc(doc(db, "users", myId))).data();
+  return { favs: d?.favs ?? [], done: !!d?.surveyDone };
+}
+
+export const saveFavs = (myId: string, favs: string[]) =>
+  setDoc(doc(db, "users", myId), { favs, surveyDone: true }, { merge: true });
+
+/** Skip still saves surveyDone, so you're not asked every time. Keeps old favs. */
+export const skipTaste = (myId: string) =>
+  setDoc(doc(db, "users", myId), { surveyDone: true }, { merge: true });

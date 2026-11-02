@@ -8,10 +8,12 @@ export default function LandingScreen({
   onCreate,
   onJoin,
   creating,
+  onEditTaste,
 }: {
   onCreate: () => void;
   onJoin: () => void;
   creating?: boolean;
+  onEditTaste?: () => void;
 }) {
   return (
     <Screen>
