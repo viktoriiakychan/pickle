@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { Image as ExpoImage } from "expo-image";
 import {
   View,
   Text,
@@ -19,6 +20,7 @@ import { Movie } from "../../lib/tmdb";
 import { EyeOff, Info } from "lucide-react-native";
 import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
+
 
 const SWIPE_THRESHOLD = 100;
 
@@ -63,6 +65,13 @@ export default function SwipeScreen({
   /* -- card flip ------------------------------------------------------- */
   const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
   const [flipped, setFlipped] = useState(false);
+
+  const [area, setArea] = useState({ w: 0, h: 0 });
+  const INFO_H = 96;
+const POSTER_RATIO = 1.5; // real poster shape
+const cardW = area.w
+  ? Math.min(area.w, Math.max(area.w * 0.75, (area.h - INFO_H) / POSTER_RATIO))
+  : undefined;
 
   const toggleFlip = () => {
     const to = flipped ? 0 : 1;
@@ -142,19 +151,25 @@ export default function SwipeScreen({
         }
       />
 
-      <ScrollView
+      {others.length > 0 && (
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ flexGrow: 0 }}
           contentContainerStyle={s.people}
         >
-          <ProgressAvatar name={myName} label="You" progress={index / Math.max(total, 1)} color={C.accent} />
+          <ProgressAvatar size={22} name={myName} label="You" progress={index / Math.max(total, 1)} color={C.accent} />
           {others.map((o, i) => (
-            <ProgressAvatar key={i} name={o.name} label={o.name} progress={o.index / Math.max(total, 1)} color={C.cream} />
+            <ProgressAvatar key={i} size={22} name={o.name} label={o.name} progress={o.index / Math.max(total, 1)} color={C.cream} />
           ))}
         </ScrollView>
+      )}
 
-      <View style={s.cardArea}>
+      <View
+      style={s.cardArea}
+      onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+      >
+      <View style={{ flex: 1, width: cardW, alignSelf: "center" }}>
         {!done && index + 1 < total && <View style={s.backCard} />}
 
         {done ? (
@@ -197,7 +212,15 @@ export default function SwipeScreen({
                 >
                   <View style={s.posterBox}>
                     <Stripes />
-                    {movie.poster && <Image source={{ uri: movie.poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+                    {movie.poster && (
+                      <ExpoImage
+                        source={{ uri: movie.poster }}
+                        style={StyleSheet.absoluteFill}
+                        contentFit="cover"
+                        contentPosition="top"
+                        transition={150}
+                      />
+                    )}
                     <LinearGradient
                       colors={["rgba(22,28,22,0)", C.surface]}
                       locations={[0.82, 1]}
@@ -262,45 +285,49 @@ export default function SwipeScreen({
           )
         )}
       </View>
+    </View>
 
       <View style={s.actions}>
-        <Pressable
-          accessibilityLabel="Pass"
-          disabled={done}
-          onPress={() => fling(false)}
-          style={({ pressed }) => [s.bigBtn, s.passBtn, done && s.off, pressed && s.pressed]}
-        >
-          <Text style={[s.bigBtnText, { color: C.cream }]}>Pass</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Undo"
-          disabled={index === 0}
-          onPress={onUndo}
-          style={({ pressed }) => [s.undoBtn, pressed && s.pressed]}
-        >
-          <Text style={s.undoText}>↺</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Pick"
-          disabled={done}
-          onPress={() => fling(true)}
-          style={({ pressed }) => [s.bigBtn, { backgroundColor: C.accent }, done && s.off, pressed && s.pressed]}
-        >
-          <Text style={[s.bigBtnText, { color: C.bg }]}>Pick</Text>
-        </Pressable>
-      </View>
-      <Pressable
-        accessibilityLabel="Already seen it"
-        disabled={done}
-        onPress={() => {
-          onSeen();
-          fling(false); // counts as a pass, so the card flies away
-        }}
-        style={({ pressed }) => [s.seenBtn, done && s.off, pressed && s.pressed]}
-      >
-        <EyeOff size={15} color={C.muted} strokeWidth={2.2} />
-        <Text style={s.seenText}>Seen it already</Text>
-      </Pressable>
+  <Pressable
+    accessibilityLabel="Pass"
+    disabled={done}
+    onPress={() => fling(false)}
+    style={({ pressed }) => [s.bigBtn, s.passBtn, done && s.off, pressed && s.pressed]}
+  >
+    <Text style={[s.bigBtnText, { color: C.cream }]}>Pass</Text>
+  </Pressable>
+
+  <Pressable
+    accessibilityLabel="Undo"
+    disabled={index === 0}
+    onPress={onUndo}
+    style={({ pressed }) => [s.undoBtn, pressed && s.pressed]}
+  >
+    <Text style={s.undoText}>↺</Text>
+  </Pressable>
+
+  <Pressable
+    accessibilityLabel="Already seen it"
+    disabled={done}
+    onPress={() => {
+      onSeen();
+      fling(false); // counts as a pass
+    }}
+    style={({ pressed }) => [s.undoBtn, done && s.off, pressed && s.pressed]}
+  >
+    <EyeOff size={18} color={C.muted} strokeWidth={2.2} />
+  </Pressable>
+
+  <Pressable
+    accessibilityLabel="Pick"
+    disabled={done}
+    onPress={() => fling(true)}
+    style={({ pressed }) => [s.bigBtn, { backgroundColor: C.accent }, done && s.off, pressed && s.pressed]}
+  >
+    <Text style={[s.bigBtnText, { color: C.bg }]}>Pick</Text>
+  </Pressable>
+</View>
+      
 
     </Screen>
   );
@@ -323,7 +350,6 @@ const s = StyleSheet.create({
     color: C.muted,
   },
 
-  cardArea: { flex: 1, marginTop: 16, marginHorizontal: 20 },
   backCard: {
     position: "absolute",
     top: 10,
@@ -344,8 +370,6 @@ const s = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: C.surface,
   },
- info: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 18, gap: 6, backgroundColor: C.surface },
-  title: { fontFamily: F.displayHeavy, fontSize: 24, lineHeight: 26, letterSpacing: -0.48, color: C.cream },
   meta: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metaText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
   overview: { fontFamily: F.text, fontSize: 14, lineHeight: 20.3, color: C.body },
@@ -366,8 +390,14 @@ const s = StyleSheet.create({
   waitTitle: { fontFamily: F.displayHeavy, fontSize: 28, letterSpacing: -0.56, color: C.cream, marginTop: 6 },
   waitSub: { fontFamily: F.text, fontSize: 14, lineHeight: 20.3, color: C.muted, textAlign: "center" },
 
-  actions: { height: 116, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 20 },
-  bigBtn: { width: 64, height: 64, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  actions: { height: 84, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16 },
+  bigBtn: { width: 58, height: 58, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  cardArea: { flex: 1, marginTop: 8, marginHorizontal: 20 },
+  info: { paddingHorizontal: 18, paddingTop: 2, paddingBottom: 14, gap: 4, backgroundColor: C.surface },
+  title: { fontFamily: F.displayHeavy, fontSize: 20, lineHeight: 22, letterSpacing: -0.4, color: C.cream },
+  hook: { fontFamily: F.textSemi, fontSize: 13, lineHeight: 18, color: C.body },
+  people: { flexGrow: 1, justifyContent: "center", gap: 8, paddingHorizontal: 24 },
+
   passBtn: { borderWidth: 1.5, borderColor: C.line },
   bigBtnText: { fontFamily: F.textBold, fontSize: 15 },
   undoBtn: {
@@ -382,24 +412,8 @@ const s = StyleSheet.create({
   off: { opacity: 0.35 },
   pressed: { transform: [{ scale: 0.94 }] },
 
-  seenBtn: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    height: 34,
-    paddingHorizontal: 14,
-    marginTop: -12, // tucks it closer to the Pass/Pick row
-    marginBottom: 8,
-    borderRadius: 999,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.chipLine,
-  },
-  seenText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
-  people: { flexGrow: 1, justifyContent: "center", gap: 8, paddingHorizontal: 24, paddingTop: 4 },
+  
   hint: { fontFamily: F.textSemi, fontSize: 12, color: C.faint },
-  hook: { fontFamily: F.textSemi, fontSize: 14, lineHeight: 20, color: C.body },
   posterBox: { flex: 1, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   infoBtn: {

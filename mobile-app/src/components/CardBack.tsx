@@ -71,6 +71,7 @@ export default function CardBack({ movie, onFlipBack }: { movie: Movie; onFlipBa
                   </Pressable>
                 ))}
               </View>
+              <Text style={s.loading}>Streaming data by JustWatch</Text> 
             </>
           ) : (
             <Button
