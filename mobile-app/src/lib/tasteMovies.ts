@@ -4,6 +4,7 @@ export type TasteMovie = { id: string; title: string; vibe: Vibe };
 
 export const MIN_FAVS = 3;
 export const MAX_FAVS = 5;
+export const TASTE_STEPS = 2; 
 
 export const TASTE_MOVIES: TasteMovie[] = [
   { id: "155", title: "The Dark Knight", vibe: "thrilling" },

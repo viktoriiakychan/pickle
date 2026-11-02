@@ -21,9 +21,10 @@ import PickleIcon from "../components/PickleIcon";
 import ConfirmDialog from "../components/ComfirmDialog";
 import TasteScreen from "../components/screens/TasteScreen";
 import { C } from "../components/theme";
+import LevelScreen from "../components/screens/LevelScreen";
 
 import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
-import { markSeen, seenByPlayers, unmarkSeen, getTaste, saveFavs, skipTaste, Taste, roomTaste } from "../lib/seen";
+import { markSeen, seenByPlayers, unmarkSeen, getTaste, saveFavs, saveLevel, Taste, roomTaste, markTasteDone, Level } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
@@ -74,7 +75,7 @@ export default function Index() {
   const seenThisRound = useRef(new Set<string>()); // movies I tapped "Seen it" on, so Undo can take it back
 
   const [taste, setTaste] = useState<Taste | undefined>(undefined); // undefined = still loading
-  const [editingTaste, setEditingTaste] = useState(false);
+  const [tasteStep, setTasteStep] = useState<"favs" | "level" | null>(null); // which survey screen is open
 
   /* --- live room --------------------------------------- */
   useEffect(() => {
@@ -98,7 +99,7 @@ export default function Index() {
   useEffect(() => {
     getTaste(myId)
       .then(setTaste)
-      .catch(() => setTaste({ favs: [], done: true })); // offline: don't block the app
+      .catch(() => setTaste({ favs: [], level: null, done: true })); // offline: don't block the app
   }, [myId]);
 
   // new deck → start from wherever Firestore says we are (0 for a fresh round)
@@ -126,16 +127,23 @@ export default function Index() {
     setCreating(false);
   };
 
-  const handleTasteDone = (favs: string[]) => {
-    setTaste({ favs, done: true });
-    setEditingTaste(false);
+  const handleFavsDone = (favs: string[]) => {
+    setTaste((t) => ({ ...t!, favs }));
     saveFavs(myId, favs).catch(() => {});
+    setTasteStep("level");
+  };
+
+  const handleLevelDone = (level: Level) => {
+    setTaste((t) => ({ ...t!, level, done: true }));
+    saveLevel(myId, level).catch(() => {});
+    markTasteDone(myId).catch(() => {});
+    setTasteStep(null);
   };
 
   const handleTasteSkip = () => {
-    setTaste((t) => ({ favs: t?.favs ?? [], done: true }));
-    setEditingTaste(false);
-    skipTaste(myId).catch(() => {});
+    setTaste((t) => ({ ...t!, done: true }));
+    markTasteDone(myId).catch(() => {});
+    setTasteStep(null);
   };
 
   const handleJoin = async (c: string) => {
@@ -346,12 +354,19 @@ export default function Index() {
     );
   }
 
-  if (editingTaste || (!taste.done && mode === "landing")) {
+  if (tasteStep !== null || (!taste.done && mode === "landing")) {
+    const editing = taste.done; // already finished once = opened from "Your taste"
+    if ((tasteStep ?? "favs") === "favs") {
+      return (
+        <TasteScreen initial={taste.favs} editing={editing} onDone={handleFavsDone} onSkip={handleTasteSkip} />
+      );
+    }
     return (
-      <TasteScreen
-        initial={taste.favs}
-        editing={editingTaste}
-        onDone={handleTasteDone}
+      <LevelScreen
+        initial={taste.level}
+        editing={editing}
+        onBack={() => setTasteStep("favs")}
+        onDone={handleLevelDone}
         onSkip={handleTasteSkip}
       />
     );
@@ -377,7 +392,7 @@ export default function Index() {
       creating={creating}
       onCreate={handleCreate}
       onJoin={() => setMode("join")}
-      onEditTaste={() => setEditingTaste(true)}
+      onEditTaste={() => setTasteStep("favs")}
     />
   );
 }

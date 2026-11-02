@@ -14,20 +14,8 @@ export async function seenByPlayers(ids: string[]): Promise<Set<string>> {
 export const unmarkSeen = (myId: string, movieId: string) =>
   updateDoc(doc(db, "users", myId), { seen: arrayRemove(movieId) });
 
-export type Taste = { favs: string[]; done: boolean };
-
-/** Your saved favourites, and whether you've done (or skipped) the survey. */
-export async function getTaste(myId: string): Promise<Taste> {
-  const d = (await getDoc(doc(db, "users", myId))).data();
-  return { favs: d?.favs ?? [], done: !!d?.surveyDone };
-}
-
-export const saveFavs = (myId: string, favs: string[]) =>
-  setDoc(doc(db, "users", myId), { favs, surveyDone: true }, { merge: true });
-
-/** Skip still saves surveyDone, so you're not asked every time. Keeps old favs. */
-export const skipTaste = (myId: string) =>
-  setDoc(doc(db, "users", myId), { surveyDone: true }, { merge: true });
+export type Level = "casual" | "regular" | "nerd";
+export type Taste = { favs: string[]; level: Level | null; done: boolean };
 
 /** Both players' seen lists (merged) and favourites (merged, no duplicates). */
 export async function roomTaste(ids: string[]): Promise<{ seen: Set<string>; favs: string[] }> {
@@ -38,3 +26,19 @@ export async function roomTaste(ids: string[]): Promise<{ seen: Set<string>; fav
     favs: [...new Set<string>(data.flatMap((d: any) => d.favs ?? []))],
   };
 }
+
+/** Your saved answers, and whether you've finished (or skipped) the survey. */
+export async function getTaste(myId: string): Promise<Taste> {
+  const d = (await getDoc(doc(db, "users", myId))).data();
+  return { favs: d?.favs ?? [], level: d?.level ?? null, done: !!d?.surveyDone };
+}
+
+export const saveFavs = (myId: string, favs: string[]) =>
+  setDoc(doc(db, "users", myId), { favs }, { merge: true });
+
+export const saveLevel = (myId: string, level: Level) =>
+  setDoc(doc(db, "users", myId), { level }, { merge: true });
+
+/** Finished or skipped: don't show the survey automatically again. */
+export const markTasteDone = (myId: string) =>
+  setDoc(doc(db, "users", myId), { surveyDone: true }, { merge: true });

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, Image, Pressable, ScrollView, StyleSheet, useWindowDimensions } from "react-native";
 import { Check } from "lucide-react-native";
-import { Button, NavBar, Screen } from "../ui-kit";
+import { Button, NavBar, Screen, StepDots } from "../ui-kit";
 import { C, F, MAX_WIDTH } from "../theme";
-import { TASTE_MOVIES, MIN_FAVS, MAX_FAVS } from "../../lib/tasteMovies";
+import { TASTE_MOVIES, MIN_FAVS, MAX_FAVS, TASTE_STEPS } from "../../lib/tasteMovies";
 import { fetchPosters, shuffle, PosterInfo } from "../../lib/tmdb";
 
 // Taste 1: "Pick a few you love". Shown once, editable from the landing screen.
@@ -38,6 +38,7 @@ export default function TasteScreen({
   return (
     <Screen>
       <NavBar
+        center={<StepDots step={1} total={TASTE_STEPS} />}
         right={
           <Pressable onPress={onSkip} hitSlop={8}>
             <Text style={s.skip}>{editing ? "Cancel" : "Skip"}</Text>

@@ -215,3 +215,20 @@ const s = StyleSheet.create({
   btnOutline: { borderWidth: 1.5, borderColor: C.line, backgroundColor: "transparent" },
   btnText: { fontFamily: F.textBold },
 });
+
+/* ── Progress dots for multi-step flows (current one is a long pill) ── */
+export function StepDots({ step, total }: { step: number; total: number }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 6 }}>
+      {Array.from({ length: total }, (_, i) => {
+        const on = i === step - 1;
+        return (
+          <View
+            key={i}
+            style={{ width: on ? 18 : 6, height: 6, borderRadius: 3, backgroundColor: on ? C.accent : C.surface2 }}
+          />
+        );
+      })}
+    </View>
+  );
+}
