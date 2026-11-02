@@ -18,13 +18,14 @@ import GenreScreen from "../components/screens/GenreScreen";
 import SwipeScreen from "../components/screens/SwipeScreen";
 import ResultsScreen from "../components/screens/ResultsScreen";
 import PickleIcon from "../components/PickleIcon";
-import ConfirmDialog from "../components/ComfirmDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 import TasteScreen from "../components/screens/TasteScreen";
 import { C } from "../components/theme";
 import LevelScreen from "../components/screens/LevelScreen";
+import PickleLoader from "../components/PickleLoader";
 
 import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
-import { markSeen, seenByPlayers, unmarkSeen, 
+import { markSeen, unmarkSeen, 
     getTaste, saveFavs, saveLevel, Taste, roomTaste,
     markTasteDone, Level, markLiked, unmarkLiked } from "../lib/seen";
 import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
@@ -280,7 +281,7 @@ export default function Index() {
   if (!fontsLoaded || (code && room === undefined) || taste === undefined) {
     return (
       <View style={s.splash}>
-        <PickleIcon size={56} />
+        <PickleLoader size={56} />
       </View>
     );
   }

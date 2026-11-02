@@ -55,6 +55,7 @@ export default function LandingScreen({
           </Pressable>
         </View>
       </View>
+      <Text style={s.credit}>Movie data from TMDB. Not endorsed or certified by TMDB.</Text>
     </Screen>
   );
 }
@@ -83,5 +84,6 @@ const s = StyleSheet.create({
   tasteText: { fontFamily: F.textSemi, fontSize: 13, color: C.cream },
   soloBtn: { alignSelf: "center", paddingVertical: 6 },
   soloText: { fontFamily: F.textSemi, fontSize: 14, color: C.muted },
+  credit: { fontFamily: F.textMedium, fontSize: 11, color: C.faint, textAlign: "center", marginTop: 8 },
 });
 

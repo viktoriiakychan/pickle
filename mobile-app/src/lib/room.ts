@@ -70,8 +70,11 @@ export async function createRoom(myId: string, solo = false): Promise<string> {
     const code = makeCode();
     const ref = roomRef(code);
     const existing = await getDoc(ref);
-    if (existing.exists()) continue;
-    await setDoc(ref, {
+    const createdAt = existing.data()?.createdAt?.toMillis?.() ?? 0;
+    const isFresh = Date.now() - createdAt < 24 * 60 * 60 * 1000; // under a day old = still in use
+    if (existing.exists() && isFresh) continue;
+    
+    await setDoc(ref, { 
       code,
       hostId: myId,
       createdAt: serverTimestamp(),

@@ -178,7 +178,6 @@ export async function fetchDeck(
 
   const picked = [...forYou, ...shuffle(rest)].slice(0, DECK_SIZE);
 
-  console.log(level, picked.map((m: any) => `${m.title} (${m.vote_count} votes)`));
   return toMovies(shuffle(picked));
 }
 

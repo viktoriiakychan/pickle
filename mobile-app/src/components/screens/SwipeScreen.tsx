@@ -17,7 +17,7 @@ import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
 import { EyeOff, Info } from "lucide-react-native";
-import ProgressAvatar from "../ProgresssAvatar";
+import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
 
 const SWIPE_THRESHOLD = 100;
