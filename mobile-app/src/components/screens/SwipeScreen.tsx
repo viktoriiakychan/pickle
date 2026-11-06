@@ -297,46 +297,48 @@ const cardW = area.w
       </View>
     </View>
 
-      <View style={s.actions}>
-  <Pressable
-    accessibilityLabel="Pass"
-    disabled={done}
-    onPress={() => fling(false)}
-    style={({ pressed }) => [s.bigBtn, s.passBtn, done && s.off, pressed && s.pressed]}
-  >
-    <Text style={[s.bigBtnText, { color: C.cream }]}>Pass</Text>
-  </Pressable>
+            <View style={s.actions}>
+        <Pressable
+          accessibilityLabel="Pass"
+          disabled={done}
+          onPress={() => fling(false)}
+          style={({ pressed }) => [s.bigBtn, s.passBtn, done && s.off, pressed && s.pressed]}
+        >
+          <Text style={[s.bigBtnText, { color: C.cream }]}>Pass</Text>
+        </Pressable>
 
-  <Pressable
-    accessibilityLabel="Undo"
-    disabled={index === 0}
-    onPress={onUndo}
-    style={({ pressed }) => [s.undoBtn, pressed && s.pressed]}
-  >
-    <Text style={s.undoText}>↺</Text>
-  </Pressable>
+        <Pressable
+          accessibilityLabel="Undo"
+          disabled={index === 0}
+          onPress={onUndo}
+          style={({ pressed }) => [s.undoBtn, index === 0 && s.off, pressed && s.pressed]}
+        >
+          <Text style={s.undoText}>↺</Text>
+        </Pressable>
 
-  <Pressable
-    accessibilityLabel="Already seen it"
-    disabled={done}
-    onPress={() => {
-      onSeen();
-      fling(false); // counts as a pass
-    }}
-    style={({ pressed }) => [s.undoBtn, done && s.off, pressed && s.pressed]}
-  >
-    <EyeOff size={18} color={C.muted} strokeWidth={2.2} />
-  </Pressable>
+        <Pressable
+          accessibilityLabel="Pick"
+          disabled={done}
+          onPress={() => fling(true)}
+          style={({ pressed }) => [s.bigBtn, { backgroundColor: C.accent }, done && s.off, pressed && s.pressed]}
+        >
+          <Text style={[s.bigBtnText, { color: C.bg }]}>Pick</Text>
+        </Pressable>
+      </View>
 
-  <Pressable
-    accessibilityLabel="Pick"
-    disabled={done}
-    onPress={() => fling(true)}
-    style={({ pressed }) => [s.bigBtn, { backgroundColor: C.accent }, done && s.off, pressed && s.pressed]}
-  >
-    <Text style={[s.bigBtnText, { color: C.bg }]}>Pick</Text>
-  </Pressable>
-</View>
+      <Pressable
+        accessibilityLabel="I've already seen it"
+        disabled={done}
+        hitSlop={8}
+        onPress={() => {
+          onSeen();
+          fling(false); // counts as a pass
+        }}
+        style={({ pressed }) => [s.seenBtn, done && s.off, pressed && s.pressed]}
+      >
+        <EyeOff size={14} color={C.muted} strokeWidth={2.2} />
+        <Text style={s.seenText}>I've already seen it</Text>
+      </Pressable>
       
 
     </Screen>
@@ -400,7 +402,20 @@ const s = StyleSheet.create({
   waitTitle: { fontFamily: F.displayHeavy, fontSize: 28, letterSpacing: -0.56, color: C.cream, marginTop: 6 },
   waitSub: { fontFamily: F.text, fontSize: 14, lineHeight: 20.3, color: C.muted, textAlign: "center" },
 
-  actions: { height: 84, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16 },
+  actions: { height: 76, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 20 },
+    seenBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    borderRadius: 999,
+    backgroundColor: C.surface,
+  },
+  seenText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
+  
   bigBtn: { width: 58, height: 58, borderRadius: 999, alignItems: "center", justifyContent: "center" },
   cardArea: { flex: 1, marginTop: 8, marginHorizontal: 20 },
   info: { paddingHorizontal: 18, paddingTop: 2, paddingBottom: 14, gap: 4, backgroundColor: C.surface },
