@@ -1,0 +1,16 @@
+{
+  "hosting": {
+    "site": "pickle-movies",
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

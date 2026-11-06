@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import {useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Image as ExpoImage } from "expo-image";
 import {
   View,
@@ -127,6 +127,15 @@ const cardW = area.w
     })
   ).current;
 
+  // download the next few posters in the background so they appear instantly
+  useEffect(() => {
+    const upcoming = deck
+      .slice(index + 1, index + 4)
+      .map((m) => m.poster)
+      .filter((p): p is string => !!p);
+    if (upcoming.length) ExpoImage.prefetch(upcoming);
+  }, [index, deck]);
+
   const rotate = pan.x.interpolate({ inputRange: [-200, 0, 200], outputRange: ["-12deg", "0deg", "12deg"] });
   const pickOpacity = pan.x.interpolate({ inputRange: [0, SWIPE_THRESHOLD], outputRange: [0, 1], extrapolate: "clamp" });
   const passOpacity = pan.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: "clamp" });
@@ -214,6 +223,7 @@ const cardW = area.w
                     <Stripes />
                     {movie.poster && (
                       <ExpoImage
+                        key={movie.id}
                         source={{ uri: movie.poster }}
                         style={StyleSheet.absoluteFill}
                         contentFit="cover"
