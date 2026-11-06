@@ -60,12 +60,11 @@ export default function SwipeScreen({
 
   /* --- card motion ------------------------------------------------------- */
   const pan = useRef(new Animated.ValueXY()).current;
-  const enter = useRef(new Animated.Value(1)).current; // 0 → 1 as a new card moves up
   const busy = useRef(false);
   const dragged = useRef(false); // so letting go of a drag doesn't count as a tap
   const exitX = Math.min(Dimensions.get("window").width, MAX_WIDTH) * 1.5;
 
-    /* -- first-time demo: wiggle the card right, then left ------------- */
+  /* -- first-time demo: wiggle the card right, then left ------------- */
   const [showHint, setShowHint] = useState(() => !hasFlag(HINT_FLAG));
   const hintFade = useRef(new Animated.Value(0)).current; // the pill's opacity
   const hintAnim = useRef<Animated.CompositeAnimation | null>(null);
@@ -86,7 +85,7 @@ export default function SwipeScreen({
     const move = (x: number, ms: number) =>
       Animated.timing(pan.x, { toValue: x, duration: ms, easing: Easing.inOut(Easing.cubic), useNativeDriver: false });
 
-        hintAnim.current = Animated.sequence([
+    hintAnim.current = Animated.sequence([
       Animated.delay(400),
       Animated.timing(hintFade, { toValue: 1, duration: 150, useNativeDriver: false }),
       move(80, 350), Animated.delay(200), move(0, 250),   // right, back
@@ -103,10 +102,10 @@ export default function SwipeScreen({
 
   const [area, setArea] = useState({ w: 0, h: 0 });
   const INFO_H = 96;
-const POSTER_RATIO = 1.5; // real poster shape
-const cardW = area.w
-  ? Math.min(area.w, Math.max(area.w * 0.75, (area.h - INFO_H) / POSTER_RATIO))
-  : undefined;
+  const POSTER_RATIO = 1.5; // real poster shape
+  const cardW = area.w
+    ? Math.min(area.w, Math.max(area.w * 0.75, (area.h - INFO_H) / POSTER_RATIO))
+    : undefined;
 
   const toggleFlip = () => {
     stopHint();
@@ -122,6 +121,7 @@ const cardW = area.w
   const frontOpacity = flip.interpolate({ inputRange: [0.49, 0.5], outputRange: [1, 0], extrapolate: "clamp" });
   const backOpacity = flip.interpolate({ inputRange: [0.5, 0.51], outputRange: [0, 1], extrapolate: "clamp" });
 
+  /* -- throwing the card ------------------------------------------------ */
   const queued = useRef<boolean | null>(null); // a Pick/Pass tapped mid-animation, played next
 
   const fling = (liked: boolean, dy = 0, vx = 0) => {
@@ -149,18 +149,20 @@ const cardW = area.w
     flip.setValue(0);
     setFlipped(false);
     busy.current = false;
-    enter.setValue(0);
-    Animated.timing(enter, { toValue: 1, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
     if (queued.current !== null) {
       const liked = queued.current;
       queued.current = null;
       fling(liked);
     }
   }, [index]);
-  
+
+  // download the next few posters in the background so they appear instantly
   useEffect(() => {
-    const next = deck.slice(index + 1, index + 4).map((m) => m.poster).filter(Boolean) as string[];
-    if (next.length) ExpoImage.prefetch(next).catch(() => {});
+    const upcoming = deck
+      .slice(index + 1, index + 6)
+      .map((m) => m.poster)
+      .filter((p): p is string => !!p);
+    if (upcoming.length) ExpoImage.prefetch(upcoming).catch(() => {});
   }, [index, deck]);
 
   const flingRef = useRef(fling);
@@ -168,7 +170,6 @@ const cardW = area.w
 
   const crossed = useRef(false); // already buzzed for this drag?
   const track = Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false });
-
 
   const responder = useRef(
     PanResponder.create({
@@ -178,14 +179,12 @@ const cardW = area.w
         crossed.current = false;
         stopHintRef.current();
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-        listener: (_: any, g: any) => {
-          const past = Math.abs(g.dx) > SWIPE_THRESHOLD;
-          if (past && !crossed.current) buzz(); // buzz once when you cross the line
-          crossed.current = past;
-        },
-      }),
+      onPanResponderMove: (e, g) => {
+        track(e, g); // card follows your finger
+        const past = Math.abs(g.dx) > SWIPE_THRESHOLD;
+        if (past && !crossed.current) buzz(); // buzz once when you cross the line
+        crossed.current = past;
+      },
       onPanResponderRelease: (_, g) => {
         const flick = Math.abs(g.vx) > FLICK_SPEED && Math.abs(g.dx) > 40 && Math.sign(g.vx) === Math.sign(g.dx);
         if (g.dx > SWIPE_THRESHOLD || (flick && g.dx > 0)) flingRef.current(true, g.dy, g.vx);
@@ -197,34 +196,156 @@ const cardW = area.w
     })
   ).current;
 
-  // download the next few posters in the background so they appear instantly
-  useEffect(() => {
-    const upcoming = deck
-      .slice(index + 1, index + 4)
-      .map((m) => m.poster)
-      .filter((p): p is string => !!p);
-    if (upcoming.length) ExpoImage.prefetch(upcoming);
-  }, [index, deck]);
-
   const rotate = pan.x.interpolate({ inputRange: [-200, 0, 200], outputRange: ["-12deg", "0deg", "12deg"] });
   const pickOpacity = pan.x.interpolate({ inputRange: [0, SWIPE_THRESHOLD], outputRange: [0, 1], extrapolate: "clamp" });
   const passOpacity = pan.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: "clamp" });
-    const enterScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] });
-  const enterY = enter.interpolate({ inputRange: [0, 1], outputRange: [4, 0] });
 
-    // next card sits underneath and grows into place as you drag the top one away
+  // next card sits underneath and grows into place as you drag the top one away
   const away = pan.x.interpolate({ inputRange: [-150, 0, 150], outputRange: [1, 0, 1], extrapolate: "clamp" });
   const backScale = away.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
   const backY = away.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
   const backDim = away.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
+  // hide the next card while flipping / reading the info side (it peeked through mid-turn)
   const backHide = flip.interpolate({ inputRange: [0, 0.05], outputRange: [1, 0], extrapolate: "clamp" });
-  const nextMovie = deck[index + 1];
 
   // stamps pop in, not just fade
   const pickScale = pan.x.interpolate({ inputRange: [0, SWIPE_THRESHOLD], outputRange: [0.6, 1], extrapolate: "clamp" });
   const passScale = pan.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0], outputRange: [1, 0.6], extrapolate: "clamp" });
 
   const waitingOn = others.filter((o) => o.index < total).map((o) => o.name);
+
+  /* -- one card in the stack (depth 0 = top, 1 = underneath, 2 = hidden, preloading) -- */
+  const stack = deck.slice(index, index + 3);
+
+  const renderCard = (m: Movie, depth: number) => {
+    const top = depth === 0;
+    return (
+      <Animated.View
+        key={m.id}
+        pointerEvents={top ? "auto" : "none"}
+        {...(top ? responder.panHandlers : {})}
+        style={[
+          s.cardShell,
+          { zIndex: 10 - depth },
+          top
+            ? { opacity: 1, transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }, { scale: 1 }] }
+            : {
+                // underneath: smaller + dimmed, grows as you drag the top card away.
+                // hidden while the top card is flipping (it peeked through mid-turn)
+                opacity: depth === 1 ? backHide : 0,
+                transform: [{ translateX: 0 }, { translateY: backY }, { rotate: "0deg" }, { scale: backScale }],
+              },
+        ]}
+      >
+        {/* FRONT: poster */}
+        <Animated.View
+          pointerEvents={top && !flipped ? "auto" : "none"}
+          style={[
+            s.face,
+            top
+              ? { opacity: frontOpacity, transform: [{ perspective: 1000 }, { rotateY: frontRotate }] }
+              : { opacity: 1, transform: [{ perspective: 1000 }, { rotateY: "0deg" }] },
+          ]}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            disabled={!top}
+            onPressIn={() => (dragged.current = false)}
+            onPress={() => !dragged.current && toggleFlip()}
+          >
+            <View style={s.posterBox}>
+              <Stripes />
+              {m.poster && (
+                <ExpoImage
+                  source={{ uri: m.poster }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  contentPosition="top"
+                  transition={150}
+                />
+              )}
+              <LinearGradient
+                colors={["rgba(22,28,22,0)", C.surface]}
+                locations={[0.82, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+            </View>
+
+            <View style={s.info}>
+              <View style={s.titleRow}>
+                <Text style={[s.title, { flex: 1 }]} numberOfLines={2}>
+                  {m.title}
+                </Text>
+                <Pressable
+                  accessibilityLabel="More info"
+                  hitSlop={10}
+                  disabled={!top}
+                  onPress={toggleFlip}
+                  style={({ pressed }) => [s.infoBtn, pressed && s.pressed]}
+                >
+                  <Info size={16} color={C.cream} strokeWidth={2.4} />
+                </Pressable>
+              </View>
+              <View style={s.meta}>
+                {[m.year, m.rating && `★ ${m.rating}`, m.runtime]
+                  .filter(Boolean)
+                  .flatMap((part, i) => (i ? ["·", part] : [part]))
+                  .map((part, i) => (
+                    <Text key={i} style={s.metaText}>
+                      {part}
+                    </Text>
+                  ))}
+              </View>
+              {!!(m.tagline || m.overview) && (
+                <Text style={s.hook} numberOfLines={2}>
+                  {m.tagline || firstSentence(m.overview)}
+                </Text>
+              )}
+            </View>
+          </Pressable>
+        </Animated.View>
+
+        {/* BACK: details (top card only) */}
+        {top && (
+          <Animated.View
+            pointerEvents={flipped ? "auto" : "none"}
+            style={[s.face, { opacity: backOpacity, transform: [{ perspective: 1000 }, { rotateY: backRotate }] }]}
+          >
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPressIn={() => (dragged.current = false)}
+              onPress={() => !dragged.current && toggleFlip()}
+            >
+              <CardBack movie={m} onFlipBack={toggleFlip} />
+            </Pressable>
+          </Animated.View>
+        )}
+
+        {top && (
+          <Animated.View
+            pointerEvents="none"
+            style={[s.stamp, s.stampPick, { opacity: pickOpacity, transform: [{ rotate: "-12deg" }, { scale: pickScale }] }]}
+          >
+            <Text style={[s.stampText, { color: C.accent }]}>PICK</Text>
+          </Animated.View>
+        )}
+        {top && (
+          <Animated.View
+            pointerEvents="none"
+            style={[s.stamp, s.stampPass, { opacity: passOpacity, transform: [{ rotate: "12deg" }, { scale: passScale }] }]}
+          >
+            <Text style={[s.stampText, { color: C.cream }]}>PASS</Text>
+          </Animated.View>
+        )}
+
+        {/* dark layer on the card underneath, fades away as it grows */}
+        <Animated.View
+          pointerEvents="none"
+          style={[s.face, { backgroundColor: C.bg, opacity: top ? 0 : backDim }]}
+        />
+      </Animated.View>
+    );
+  };
 
   return (
     <Screen>
@@ -257,145 +378,39 @@ const cardW = area.w
       )}
 
       <View
-      style={s.cardArea}
-      onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+        style={s.cardArea}
+        onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
       >
-      <View style={{ flex: 1, width: cardW, alignSelf: "center" }}>
-        {!done && nextMovie && (
-          <Animated.View style={[s.backCard, {opacity: backHide, transform: [{ translateY: backY }, { scale: backScale }] }]}>
-            <Stripes />
-            {nextMovie.poster && (
-              <ExpoImage source={{ uri: nextMovie.poster }} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition="top" />
-            )}
-            <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: C.bg, opacity: backDim }]} />
-          </Animated.View>
-        )}
+        <View style={{ flex: 1, width: cardW, alignSelf: "center" }}>
+          {done ? (
+            <View style={[s.card, s.waitCard]}>
+              <PickleIcon size={56} background={C.surface} />
+              <Text style={s.waitTitle}>You're done!</Text>
+              <Text style={s.waitSub}>
+                {waitingOn.length === 0
+                  ? "Getting your matches…"
+                  : waitingOn.length > 3
+                  ? `Waiting for ${waitingOn.length} people to finish`
+                  : `Waiting for ${joinNames(waitingOn)} to finish`}
+              </Text>
+            </View>
+          ) : (
+            // The stack: top card, the one underneath, and one more hidden one.
+            // Each card is keyed by movie id, so when you swipe, the card underneath
+            // (poster already loaded) *becomes* the top card instead of a new one loading.
+            stack.map((m, depth) => renderCard(m, depth))
+          )}
 
-        {done ? (
-          <View style={[s.card, s.waitCard]}>
-            <PickleIcon size={56} background={C.surface} />
-            <Text style={s.waitTitle}>You're done!</Text>
-            <Text style={s.waitSub}>
-              {waitingOn.length === 0
-                ? "Getting your matches…"
-                : waitingOn.length > 3
-                ? `Waiting for ${waitingOn.length} people to finish`
-                : `Waiting for ${joinNames(waitingOn)} to finish`}
-            </Text>
-          </View>
-        ) : (
-          movie && (
-            <Animated.View
-              {...responder.panHandlers}
-              style={[
-                s.cardShell,
-                {
-                  transform: [
-                    { translateX: pan.x },
-                    { translateY: Animated.add(pan.y, enterY) },
-                    { rotate },
-                    { scale: enterScale },
-                  ],
-                },
-              ]}
-            >
-              {/* FRONT: poster */}
-              <Animated.View
-                pointerEvents={flipped ? "none" : "auto"}
-                style={[s.face, { opacity: frontOpacity, transform: [{ perspective: 1000 }, { rotateY: frontRotate }] }]}
-              >
-                <Pressable
-                  style={StyleSheet.absoluteFill}
-                  onPressIn={() => (dragged.current = false)}
-                  onPress={() => !dragged.current && toggleFlip()}
-                >
-                  <View style={s.posterBox}>
-                    <Stripes />
-                    {movie.poster && (
-                      <ExpoImage
-                        key={movie.id}
-                        source={{ uri: movie.poster }}
-                        style={StyleSheet.absoluteFill}
-                        contentFit="cover"
-                        contentPosition="top"
-                        transition={150}
-                      />
-                    )}
-                    <LinearGradient
-                      colors={["rgba(22,28,22,0)", C.surface]}
-                      locations={[0.82, 1]}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </View>
-
-                  <View style={s.info}>
-                    <View style={s.titleRow}>
-                      <Text style={[s.title, { flex: 1 }]} numberOfLines={2}>
-                        {movie.title}
-                      </Text>
-                      <Pressable
-                        accessibilityLabel="More info"
-                        hitSlop={10}
-                        onPress={toggleFlip}
-                        style={({ pressed }) => [s.infoBtn, pressed && s.pressed]}
-                      >
-                        <Info size={16} color={C.cream} strokeWidth={2.4} />
-                      </Pressable>
-                    </View>
-                    <View style={s.meta}>
-                      {[movie.year, movie.rating && `★ ${movie.rating}`, movie.runtime]
-                        .filter(Boolean)
-                        .flatMap((part, i) => (i ? ["·", part] : [part]))
-                        .map((part, i) => (
-                          <Text key={i} style={s.metaText}>
-                            {part}
-                          </Text>
-                        ))}
-                    </View>
-                    {!!(movie.tagline || movie.overview) && (
-                      <Text style={s.hook} numberOfLines={2}>
-                        {movie.tagline || firstSentence(movie.overview)}
-                      </Text>
-                    )}
-                  </View>
-                </Pressable>
-              </Animated.View>
-
-              {/* BACK: details */}
-              <Animated.View
-                pointerEvents={flipped ? "auto" : "none"}
-                style={[s.face, { opacity: backOpacity, transform: [{ perspective: 1000 }, { rotateY: backRotate }] }]}
-              >
-                <Pressable
-                  style={StyleSheet.absoluteFill}
-                  onPressIn={() => (dragged.current = false)}
-                  onPress={() => !dragged.current && toggleFlip()}
-                >
-                  <CardBack movie={movie} onFlipBack={toggleFlip} />
-                </Pressable>
-              </Animated.View>
-
-              <Animated.View pointerEvents="none"
-                style={[s.stamp, s.stampPick, { opacity: pickOpacity, transform: [{ rotate: "-12deg" }, { scale: pickScale }] }]}>
-                <Text style={[s.stampText, { color: C.accent }]}>PICK</Text>
-              </Animated.View>
-              <Animated.View pointerEvents="none"
-                style={[s.stamp, s.stampPass, { opacity: passOpacity, transform: [{ rotate: "12deg" }, { scale: passScale }] }]}>
-                <Text style={[s.stampText, { color: C.cream }]}>PASS</Text>
-              </Animated.View>
+          {showHint && !done && (
+            <Animated.View pointerEvents="none" style={[s.hint, { zIndex: 20, opacity: hintFade }]}>
+              <Hand size={16} color={C.bg} strokeWidth={2.4} />
+              <Text style={s.hintText}>Swipe right to pick, left to pass</Text>
             </Animated.View>
-          )
-        )}
-        {showHint && !done && (
-          <Animated.View pointerEvents="none" style={[s.hint, { opacity: hintFade }]}>
-            <Hand size={16} color={C.bg} strokeWidth={2.4} />
-            <Text style={s.hintText}>Swipe right to pick, left to pass</Text>
-          </Animated.View>
-        )}
+          )}
+        </View>
       </View>
-    </View>
 
-            <View style={s.actions}>
+      <View style={s.actions}>
         <Pressable
           accessibilityLabel="Pass"
           disabled={done}
@@ -408,7 +423,7 @@ const cardW = area.w
         <Pressable
           accessibilityLabel="Undo"
           disabled={index === 0}
-          onPress={onUndo}
+          onPress={() => !busy.current && onUndo()}
           style={({ pressed }) => [s.undoBtn, index === 0 && s.off, pressed && s.pressed]}
         >
           <Text style={s.undoText}>↺</Text>
@@ -428,7 +443,8 @@ const cardW = area.w
         accessibilityLabel="I've already seen it"
         disabled={done}
         hitSlop={8}
-        onPress={() => {if (busy.current) return;
+        onPress={() => {
+          if (busy.current) return; // otherwise it marks the card that's already flying away
           onSeen();
           fling(false); // counts as a pass
         }}
@@ -437,8 +453,6 @@ const cardW = area.w
         <EyeOff size={14} color={C.muted} strokeWidth={2.2} />
         <Text style={s.seenText}>I've already seen it</Text>
       </Pressable>
-      
-
     </Screen>
   );
 }
@@ -460,7 +474,6 @@ const s = StyleSheet.create({
     color: C.muted,
   },
 
-  backCard: { ...StyleSheet.absoluteFill, borderRadius: 28, overflow: "hidden", backgroundColor: C.surface },
   card: {
     position: "absolute",
     top: 0,
@@ -492,7 +505,7 @@ const s = StyleSheet.create({
   waitSub: { fontFamily: F.text, fontSize: 14, lineHeight: 20.3, color: C.muted, textAlign: "center" },
 
   actions: { height: 76, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 20 },
-    seenBtn: {
+  seenBtn: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "center",
