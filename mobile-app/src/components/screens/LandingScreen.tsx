@@ -1,5 +1,5 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Sparkles } from "lucide-react-native";
+import { Bookmark, Sparkles } from "lucide-react-native";
 import PickleLogo from "../PickleLogo";
 import { Button, Screen } from "../ui-kit";
 import { C, F } from "../theme";
@@ -11,12 +11,14 @@ export default function LandingScreen({
   creating,
   onEditTaste,
   onSolo,
+  onSaved,
 }: {
   onCreate: () => void;
   onJoin: () => void;
   creating?: boolean;
   onEditTaste?: () => void;
   onSolo: () => void;
+  onSaved?: () => void;
 }) {
   return (
     <Screen>
@@ -29,6 +31,17 @@ export default function LandingScreen({
                 accessibilityLabel="Your taste"
                 style={({ pressed }) => [s.tasteBtn, pressed && { transform: [{ scale: 0.94 }] }]}
               >
+              {onSaved && (
+                <Pressable
+                  onPress={onSaved}
+                  hitSlop={8}
+                  accessibilityLabel="Saved matches"
+                  style={({ pressed }) => [s.tasteBtn, pressed && { transform: [{ scale: 0.94 }] }]}
+                >
+                  <Bookmark size={14} color={C.accent} strokeWidth={2.4} />
+                  <Text style={s.tasteText}>Saved</Text>
+                </Pressable>
+              )}
                 <Sparkles size={14} color={C.accent} strokeWidth={2.4} />
                 <Text style={s.tasteText}>Your taste</Text>
               </Pressable>
@@ -71,7 +84,7 @@ const s = StyleSheet.create({
     color: C.cream,
   },
   sub: { fontFamily: F.text, fontSize: 16, lineHeight: 23.2, color: C.muted, maxWidth: 320 },
-  top: { flexDirection: "row", justifyContent: "flex-end", paddingTop: 12 },
+  top: { flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingTop: 12 },
   tasteBtn: {
     flexDirection: "row",
     alignItems: "center",

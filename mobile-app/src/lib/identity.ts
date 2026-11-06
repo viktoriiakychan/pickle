@@ -35,7 +35,8 @@ export function getMyId(): string {
   return id;
 }
 
-const ROOM_TTL_MS = 30 * 60 * 1000; // 30 mins
+const ROOM_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
+
 
 /** The room you were in, only if you saved it in the last 30 mins. */
 export function getSavedRoom(): string | null {

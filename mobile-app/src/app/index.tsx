@@ -47,6 +47,9 @@ import {
   groupMatches
 } from "../lib/room"; 
 
+import SavedScreen from "../components/screens/SavedScreen";
+import { nightId, saveNight } from "../lib/savedMatches";
+
 const NO_TASTE = () => ({ seen: new Set<string>(), favs: [] as string[], level: "casual" as Level });
 
 export default function Index() {
@@ -65,7 +68,7 @@ export default function Index() {
   const myId = useMemo(getMyId, []);
   const linkCode = useMemo(getRoomFromUrl, []);
 
-  const [mode, setMode] = useState<"landing" | "join">(linkCode ? "join" : "landing");
+  const [mode, setMode] = useState<"landing" | "join" | "saved">(linkCode ? "join" : "landing");
   const [code, setCode] = useState<string | null>(() => getSavedRoom());
   const [room, setRoom] = useState<Room | null | undefined>(undefined); // undefined = still loading
 
@@ -96,6 +99,7 @@ export default function Index() {
         setRoom(undefined);
         return;
       }
+      saveRoom(code);
       setRoom(r);
     });
   }, [code, myId]);
@@ -112,6 +116,22 @@ export default function Index() {
   useEffect(() => {
     setMyIndex(room?.progress?.[myId] ?? 0);
   }, [deckKey]);
+
+   const finished = !!room && room.stage === "swiping" && everyoneFinished(room);
+  const thisNight = finished && room?.deck ? nightId(room.code, room.deck) : null;
+  useEffect(() => {
+    if (!thisNight || !room) return;
+    const matches = groupMatches(room).map((m) => m.movie);
+    if (!matches.length) return; // no matches, nothing to save
+    saveNight({
+      id: thisNight,
+      at: Date.now(),
+      genre: room.genre?.title ?? "",
+      with: playerIds(room).filter((id) => id !== myId).map((id) => room.players[id].name),
+      solo: !!room.solo,
+      movies: matches,
+    });
+  }, [thisNight]);
 
   /* ── actions ─────────────────────────────────────────────────────── */
   const enterRoom = (c: string) => {
@@ -403,6 +423,15 @@ export default function Index() {
     );
   }
 
+  if (mode === "saved") {
+    return (
+      <SavedScreen
+        onBack={() => setMode("landing")}
+        onOpen={(m) => Linking.openURL(whereToWatchUrl(m.id))}
+      />
+    );
+  }
+
   if (mode === "join") {
     return (
       <JoinScreen
@@ -424,6 +453,7 @@ export default function Index() {
       onCreate={handleCreate}
       onJoin={() => setMode("join")}
       onSolo={handleSolo}
+      onSaved={() => setMode("saved")}
       onEditTaste={() => setTasteStep("favs")}
     />
   );
