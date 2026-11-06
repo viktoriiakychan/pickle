@@ -74,3 +74,7 @@ export function roomLink(code: string): string | null {
     return null;
   }
 }
+
+/** One-off flags on this device, e.g. "already saw the swipe demo". */
+export const hasFlag = (key: string) => read(`pickle.flag.${key}`) === "1";
+export const setFlag = (key: string) => write(`pickle.flag.${key}`, "1");

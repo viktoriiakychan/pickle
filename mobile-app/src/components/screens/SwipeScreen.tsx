@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Image as ExpoImage } from "expo-image";
 import {
   View,
@@ -17,12 +17,15 @@ import { Avatar, NavBar, Screen, Stripes } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
-import { EyeOff, Info } from "lucide-react-native";
+import { EyeOff, Hand, Info } from "lucide-react-native";
 import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
-
+import { hasFlag, setFlag } from "../../lib/identity";
 
 const SWIPE_THRESHOLD = 100;
+const FLICK_SPEED = 0.6; // px/ms: a flick this fast counts as a swipe even if it's short
+const buzz = () => { try { (globalThis as any).navigator?.vibrate?.(8); } catch {} };
+const HINT_FLAG = "swipeHint"; // first-ever swipe screen shows a demo wiggle
 
 /** ["Dill"] → "Dill", ["Dill","Brine","Spear"] → "Dill, Brine and Spear" */
 const joinNames = (ns: string[]) =>
@@ -62,6 +65,38 @@ export default function SwipeScreen({
   const dragged = useRef(false); // so letting go of a drag doesn't count as a tap
   const exitX = Math.min(Dimensions.get("window").width, MAX_WIDTH) * 1.5;
 
+    /* -- first-time demo: wiggle the card right, then left ------------- */
+  const [showHint, setShowHint] = useState(() => !hasFlag(HINT_FLAG));
+  const hintFade = useRef(new Animated.Value(0)).current; // the pill's opacity
+  const hintAnim = useRef<Animated.CompositeAnimation | null>(null);
+
+  const stopHint = () => {
+    if (!showHint) return;
+    hintAnim.current?.stop();
+    hintAnim.current = null;
+    setFlag(HINT_FLAG);   // never show it again on this device
+    setShowHint(false);
+    if (!busy.current) pan.setValue({ x: 0, y: 0 }); // snap the card back to the middle
+  };
+  const stopHintRef = useRef(stopHint);
+  stopHintRef.current = stopHint;
+
+  useEffect(() => {
+    if (!showHint || done) return;
+    const move = (x: number, ms: number) =>
+      Animated.timing(pan.x, { toValue: x, duration: ms, easing: Easing.inOut(Easing.cubic), useNativeDriver: false });
+
+        hintAnim.current = Animated.sequence([
+      Animated.delay(400),
+      Animated.timing(hintFade, { toValue: 1, duration: 150, useNativeDriver: false }),
+      move(80, 350), Animated.delay(200), move(0, 250),   // right, back
+      move(-80, 350), Animated.delay(200), move(0, 250),  // left, back
+      Animated.timing(hintFade, { toValue: 0, duration: 200, useNativeDriver: false }), // gone straight away
+    ]);
+    hintAnim.current.start(({ finished }) => finished && stopHint());
+    return () => hintAnim.current?.stop();
+  }, []);
+
   /* -- card flip ------------------------------------------------------- */
   const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
   const [flipped, setFlipped] = useState(false);
@@ -74,6 +109,7 @@ const cardW = area.w
   : undefined;
 
   const toggleFlip = () => {
+    stopHint();
     const to = flipped ? 0 : 1;
     setFlipped(!flipped);
     Animated.spring(flip, { toValue: to, friction: 8, tension: 60, useNativeDriver: false }).start();
@@ -86,12 +122,22 @@ const cardW = area.w
   const frontOpacity = flip.interpolate({ inputRange: [0.49, 0.5], outputRange: [1, 0], extrapolate: "clamp" });
   const backOpacity = flip.interpolate({ inputRange: [0.5, 0.51], outputRange: [0, 1], extrapolate: "clamp" });
 
-  const fling = (liked: boolean, dy = 0) => {
-    if (busy.current || done) return;
+  const queued = useRef<boolean | null>(null); // a Pick/Pass tapped mid-animation, played next
+
+  const fling = (liked: boolean, dy = 0, vx = 0) => {
+    if (done) return;
+    stopHint();
+    if (busy.current) {
+      queued.current = liked; // fast taps get queued instead of ignored
+      return;
+    }
     busy.current = true;
+    // faster finger = faster throw; buttons get a nice default speed
+    const speed = Math.max(Math.abs(vx), 2.8);
+    const duration = Math.min(220, Math.max(130, exitX / speed));
     Animated.timing(pan, {
-      toValue: { x: liked ? exitX : -exitX, y: dy },
-      duration: 260,
+      toValue: { x: liked ? exitX : -exitX, y: dy - 20 }, // slight upward arc
+      duration,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start(() => onSwipe(liked));
@@ -104,26 +150,50 @@ const cardW = area.w
     setFlipped(false);
     busy.current = false;
     enter.setValue(0);
-    Animated.spring(enter, { toValue: 1, friction: 7, tension: 90, useNativeDriver: false }).start();
+    Animated.timing(enter, { toValue: 1, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    if (queued.current !== null) {
+      const liked = queued.current;
+      queued.current = null;
+      fling(liked);
+    }
   }, [index]);
+  
+  useEffect(() => {
+    const next = deck.slice(index + 1, index + 4).map((m) => m.poster).filter(Boolean) as string[];
+    if (next.length) ExpoImage.prefetch(next).catch(() => {});
+  }, [index, deck]);
 
   const flingRef = useRef(fling);
   flingRef.current = fling;
+
+  const crossed = useRef(false); // already buzzed for this drag?
+  const track = Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false });
+
 
   const responder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
       onPanResponderGrant: () => {
         dragged.current = true;
+        crossed.current = false;
+        stopHintRef.current();
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+        useNativeDriver: false,
+        listener: (_: any, g: any) => {
+          const past = Math.abs(g.dx) > SWIPE_THRESHOLD;
+          if (past && !crossed.current) buzz(); // buzz once when you cross the line
+          crossed.current = past;
+        },
+      }),
       onPanResponderRelease: (_, g) => {
-        if (g.dx > SWIPE_THRESHOLD) flingRef.current(true, g.dy);
-        else if (g.dx < -SWIPE_THRESHOLD) flingRef.current(false, g.dy);
-        else Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 6, useNativeDriver: false }).start();
+        const flick = Math.abs(g.vx) > FLICK_SPEED && Math.abs(g.dx) > 40 && Math.sign(g.vx) === Math.sign(g.dx);
+        if (g.dx > SWIPE_THRESHOLD || (flick && g.dx > 0)) flingRef.current(true, g.dy, g.vx);
+        else if (g.dx < -SWIPE_THRESHOLD || (flick && g.dx < 0)) flingRef.current(false, g.dy, g.vx);
+        else Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 5, tension: 140, useNativeDriver: false }).start();
       },
       onPanResponderTerminate: () =>
-        Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 6, useNativeDriver: false }).start(),
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 5, tension: 140, useNativeDriver: false }).start(),
     })
   ).current;
 
@@ -139,8 +209,20 @@ const cardW = area.w
   const rotate = pan.x.interpolate({ inputRange: [-200, 0, 200], outputRange: ["-12deg", "0deg", "12deg"] });
   const pickOpacity = pan.x.interpolate({ inputRange: [0, SWIPE_THRESHOLD], outputRange: [0, 1], extrapolate: "clamp" });
   const passOpacity = pan.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: "clamp" });
-  const enterScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] });
-  const enterY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+    const enterScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] });
+  const enterY = enter.interpolate({ inputRange: [0, 1], outputRange: [4, 0] });
+
+    // next card sits underneath and grows into place as you drag the top one away
+  const away = pan.x.interpolate({ inputRange: [-150, 0, 150], outputRange: [1, 0, 1], extrapolate: "clamp" });
+  const backScale = away.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
+  const backY = away.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
+  const backDim = away.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
+  const backHide = flip.interpolate({ inputRange: [0, 0.05], outputRange: [1, 0], extrapolate: "clamp" });
+  const nextMovie = deck[index + 1];
+
+  // stamps pop in, not just fade
+  const pickScale = pan.x.interpolate({ inputRange: [0, SWIPE_THRESHOLD], outputRange: [0.6, 1], extrapolate: "clamp" });
+  const passScale = pan.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0], outputRange: [1, 0.6], extrapolate: "clamp" });
 
   const waitingOn = others.filter((o) => o.index < total).map((o) => o.name);
 
@@ -179,7 +261,15 @@ const cardW = area.w
       onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
       >
       <View style={{ flex: 1, width: cardW, alignSelf: "center" }}>
-        {!done && index + 1 < total && <View style={s.backCard} />}
+        {!done && nextMovie && (
+          <Animated.View style={[s.backCard, {opacity: backHide, transform: [{ translateY: backY }, { scale: backScale }] }]}>
+            <Stripes />
+            {nextMovie.poster && (
+              <ExpoImage source={{ uri: nextMovie.poster }} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition="top" />
+            )}
+            <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: C.bg, opacity: backDim }]} />
+          </Animated.View>
+        )}
 
         {done ? (
           <View style={[s.card, s.waitCard]}>
@@ -285,14 +375,22 @@ const cardW = area.w
                 </Pressable>
               </Animated.View>
 
-              <Animated.View pointerEvents="none" style={[s.stamp, s.stampPick, { opacity: pickOpacity }]}>
+              <Animated.View pointerEvents="none"
+                style={[s.stamp, s.stampPick, { opacity: pickOpacity, transform: [{ rotate: "-12deg" }, { scale: pickScale }] }]}>
                 <Text style={[s.stampText, { color: C.accent }]}>PICK</Text>
               </Animated.View>
-              <Animated.View pointerEvents="none" style={[s.stamp, s.stampPass, { opacity: passOpacity }]}>
+              <Animated.View pointerEvents="none"
+                style={[s.stamp, s.stampPass, { opacity: passOpacity, transform: [{ rotate: "12deg" }, { scale: passScale }] }]}>
                 <Text style={[s.stampText, { color: C.cream }]}>PASS</Text>
               </Animated.View>
             </Animated.View>
           )
+        )}
+        {showHint && !done && (
+          <Animated.View pointerEvents="none" style={[s.hint, { opacity: hintFade }]}>
+            <Hand size={16} color={C.bg} strokeWidth={2.4} />
+            <Text style={s.hintText}>Swipe right to pick, left to pass</Text>
+          </Animated.View>
         )}
       </View>
     </View>
@@ -330,7 +428,7 @@ const cardW = area.w
         accessibilityLabel="I've already seen it"
         disabled={done}
         hitSlop={8}
-        onPress={() => {
+        onPress={() => {if (busy.current) return;
           onSeen();
           fling(false); // counts as a pass
         }}
@@ -362,16 +460,7 @@ const s = StyleSheet.create({
     color: C.muted,
   },
 
-  backCard: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    right: 10,
-    bottom: 0,
-    borderRadius: 28,
-    backgroundColor: C.surface,
-    transform: [{ scale: 0.95 }, { translateY: 10 }],
-  },
+  backCard: { ...StyleSheet.absoluteFill, borderRadius: 28, overflow: "hidden", backgroundColor: C.surface },
   card: {
     position: "absolute",
     top: 0,
@@ -415,7 +504,7 @@ const s = StyleSheet.create({
     backgroundColor: C.surface,
   },
   seenText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
-  
+
   bigBtn: { width: 58, height: 58, borderRadius: 999, alignItems: "center", justifyContent: "center" },
   cardArea: { flex: 1, marginTop: 8, marginHorizontal: 20 },
   info: { paddingHorizontal: 18, paddingTop: 2, paddingBottom: 14, gap: 4, backgroundColor: C.surface },
@@ -436,9 +525,19 @@ const s = StyleSheet.create({
   undoText: { fontSize: 18, color: C.muted },
   off: { opacity: 0.35 },
   pressed: { transform: [{ scale: 0.94 }] },
-
-  
-  hint: { fontFamily: F.textSemi, fontSize: 12, color: C.faint },
+  hint: {
+    position: "absolute",
+    alignSelf: "center",
+    bottom: 120,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: C.accent,
+  },
+  hintText: { fontFamily: F.textBold, fontSize: 14, color: C.bg },
   posterBox: { flex: 1, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   infoBtn: {
