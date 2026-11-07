@@ -4,7 +4,9 @@
 //   code, hostId, createdAt,
 //   players:  { [playerId]: { name, joinedAt } },
 //   stage:    "lobby" | "genre" | "swiping",
-//   genre:    { id, title } | null     ← host taps a chip, guest sees it live
+//   moods:    { [playerId]: { genres, any, no, ready } } ← everyone's genre picks, live
+//   genre:    { id, title } | null     ← the deck's name once it's built, e.g. "Comedy + Romance"
+//   plan:     { with, without } | null ← the TMDB query the deck came from (for "Seen it")
 //   deck:     Movie[] | null           ← the same 20 movies for both phones
 //   progress: { [playerId]: number }   ← how many cards each person has swiped
 //   picks:    { [playerId]: string[] } ← movie ids each person said yes to
@@ -26,18 +28,25 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
-import type { Genre, Movie } from "./tmdb";
+import type { Genre, Movie, Query } from "./tmdb";
 
 export const MAX_PLAYERS = 10;
 
 export type Player = { name: string; joinedAt: number };
 export type Stage = "lobby" | "genre" | "swiping";
+/** One person's genre choice. genres = up to MAX_GENRES ids, any = "Surprise me", no = "Not tonight". */
+export type Mood = { genres: string[]; any: boolean; no: string | null; ready: boolean };
+export const MAX_GENRES = 2;
+export const EMPTY_MOOD: Mood = { genres: [], any: false, no: null, ready: false };
+
 export type Room = {
   code: string;
   hostId: string;
   players: Record<string, Player>;
   stage: Stage;
   genre: Genre | null;
+  plan?: Query | null;
+  moods?: Record<string, Mood>;
   deck: Movie[] | null;
   progress: Record<string, number>;
   picks: Record<string, string[]>;
@@ -119,6 +128,7 @@ export async function leaveRoom(code: string, myId: string): Promise<void> {
       [`players.${myId}`]: deleteField(),
       [`progress.${myId}`]: deleteField(),
       [`picks.${myId}`]: deleteField(),
+      [`moods.${myId}`]: deleteField(),
     };
     if (room.hostId === myId && others.length) update.hostId = others[0]; // hand over host
     tx.update(ref, update);
@@ -136,14 +146,28 @@ export function subscribeToRoom(code: string, onChange: (room: Room | null) => v
 /* ── host actions ──────────────────────────────────────────────────── */
 export const goToGenres = (code: string) => updateDoc(roomRef(code), { stage: "genre" });
 
-export const chooseGenre = (code: string, genre: Genre) => updateDoc(roomRef(code), { genre });
+/** Anyone: save my genre picks. Everyone else sees them straight away. */
+export const setMood = (code: string, myId: string, mood: Mood) =>
+  updateDoc(roomRef(code), { [`moods.${myId}`]: mood });
 
-export const startSwiping = (code: string, deck: Movie[]) =>
-  updateDoc(roomRef(code), { stage: "swiping", deck, progress: {}, picks: {} });
+/** Host: deck is built, everyone goes to swiping. `label` is the deck's name, e.g. "Comedy + Romance". */
+export const startSwiping = (code: string, deck: Movie[], label: string, plan: Query) =>
+  updateDoc(roomRef(code), {
+    stage: "swiping",
+    deck,
+    genre: { id: plan.with || "any", title: label },
+    plan,
+    progress: {},
+    picks: {},
+  });
 
-/** "New genre" on the results screen: back to the picker, scores wiped. */
-export const newRound = (code: string) =>
-  updateDoc(roomRef(code), { stage: "genre", genre: null, deck: null, progress: {}, picks: {} });
+/** "New genre" on the results screen: back to the picker, scores wiped.
+ *  Everyone keeps their last picks but has to tap Ready again. */
+export function newRound(code: string, ids: string[]) {
+  const update: Record<string, any> = { stage: "genre", genre: null, plan: null, deck: null, progress: {}, picks: {} };
+  ids.forEach((id) => (update[`moods.${id}.ready`] = false));
+  return updateDoc(roomRef(code), update);
+}
 
 /* ── swiping ───────────────────────────────────────────────────────── */
 export function recordSwipe(code: string, myId: string, movieId: string, liked: boolean, newIndex: number) {

@@ -24,7 +24,7 @@ import { C } from "../components/theme";
 import LevelScreen from "../components/screens/LevelScreen";
 import PickleLoader from "../components/PickleLoader";
 
-import { fetchDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie } from "../lib/tmdb";
+import { buildDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie, GENRES } from "../lib/tmdb";
 import { markSeen, unmarkSeen, 
     getTaste, saveFavs, saveLevel, Taste, roomTaste,
     markTasteDone, Level, markLiked, unmarkLiked } from "../lib/seen";
@@ -37,15 +37,16 @@ import {
   subscribeToRoom,
   playerIds,
   goToGenres,
-  chooseGenre,
+  setMood,
   startSwiping,
   newRound,
   recordSwipe,
   undoSwipe,
   everyoneFinished,
   addToDeck,
-  groupMatches
-} from "../lib/room"; 
+  groupMatches,
+  EMPTY_MOOD,
+} from "../lib/room";
 
 import SavedScreen from "../components/screens/SavedScreen";
 import { nightId, saveNight } from "../lib/savedMatches";
@@ -237,15 +238,20 @@ export default function Index() {
     }
   };
 
+  // everyone's genre picks, with missing fields filled in
+  const moodOf = (r: Room, id: string) => ({ ...EMPTY_MOOD, ...r.moods?.[id] });
+
   const handleStart = async () => {
-    if (!code || !room?.genre || dealing) return;
+    if (!code || !room || dealing) return;
     setDealing(true);
     try {
-      const { seen, favs, level } = await roomTaste(playerIds(room)).catch(NO_TASTE);
-      const deck = await fetchDeck(room.genre, seen, favs, level);
+      const ids = playerIds(room);
+      const moods = ids.map((id) => ({ id, genres: moodOf(room, id).genres, no: moodOf(room, id).no }));
+      const { seen, favs, level } = await roomTaste(ids).catch(NO_TASTE);
+      const { deck, plan, label } = await buildDeck(moods, seen, favs, level);
 
       if (!deck.length) throw new Error("no movies");
-      await startSwiping(code, deck);
+      await startSwiping(code, deck, label, plan);
     } catch (e) {
       console.warn("fetchDeck failed", e);
       (globalThis as any).alert?.("Couldn't load movies. Try again in a sec.");
@@ -275,7 +281,8 @@ export default function Index() {
     room.deck.forEach((m) => exclude.add(m.id));
     exclude.add(movie.id);
 
-    const extra = await fetchReplacement(room.genre, exclude, level).catch(() => null);
+    const plan = room.plan ?? { with: room.genre.id, without: "" }; // older rooms had one genre
+    const extra = await fetchReplacement(plan, exclude, level).catch(() => null);
     if (extra) addToDeck(code, extra).catch(() => {});
   };
 
@@ -320,6 +327,29 @@ export default function Index() {
     const group = others.length > 1;
     const solo = !!room.solo;
 
+    // little label on each swipe card: "You both picked Comedy", "Brine's pick", "Romance + Horror blend"
+    const genreTitles = (gs: string[]) => gs.map((g) => GENRES.find((x) => x.id === g)?.title ?? "").join(" + ");
+    const tagLabel = (m: Movie): string | null => {
+      const t = m.tag;
+      if (!t) return null;
+      if (t.kind === "blend") return `${genreTitles(t.genres)} blend`;
+      if (t.kind === "everyone") return `${ids.length === 2 ? "You both" : "Everyone"} picked ${genreTitles(t.genres)}`;
+      if (t.kind === "pick" && solo) return genreTitles(t.genres) || null; // "Romance"
+      if (t.kind === "pick" && t.by) return t.by === myId ? "Your pick" : `${name(t.by)}'s pick`;
+      return null;
+    };
+
+    // tap the pill on the swipe screen: who picked what
+    const genreDetails = ids.flatMap((id) => {
+      const md = moodOf(room, id);
+      const who = solo ? "You picked" : id === myId ? "You" : name(id);
+      const lines: { who: string; what: string; no?: boolean }[] = [];
+      if (md.genres.length) lines.push({ who, what: genreTitles(md.genres) });
+      else if (md.any) lines.push({ who, what: "Surprise me" });
+      if (md.no) lines.push({ who: "Not tonight", what: solo ? genreTitles([md.no]) : `${genreTitles([md.no])} (${who})`, no: true });
+      return lines;
+    });
+
     if (room.stage === "lobby") {
       return (
         <LobbyScreen
@@ -343,15 +373,17 @@ export default function Index() {
     if (room.stage === "genre" || !room.deck) {
       return (
         <GenreScreen
-          isHost={isHost}
-          hostName={hostName}
-          friendName={name(friendId)}
-          playerNames={names}
-          selected={room.genre}
+          players={ids.map((id) => ({
+            id,
+            name: room.players[id].name,
+            isMe: id === myId,
+            isHost: id === room.hostId,
+            mood: moodOf(room, id),
+          }))}
           loading={dealing}
           solo={solo}
           onBack={handleLeave}
-          onSelect={(g) => chooseGenre(room.code, g)}
+          onChange={(mood) => setMood(room.code, myId, mood).catch(() => {})}
           onStart={handleStart}
         />
       );
@@ -366,7 +398,7 @@ export default function Index() {
           matches={matches.map((m) => m.movie)}
           votes={Object.fromEntries(matches.map((m) => [m.movie.id, m.yes]))}
           groupSize={ids.length}
-          onNewGenre={() => newRound(room.code)}
+          onNewGenre={() => newRound(room.code, ids)}
           onWhereToWatch={openWhereToWatch}
           onLeave={handleLeave}
         />
@@ -385,6 +417,8 @@ export default function Index() {
           myName={name(myId)}
           onUndo={handleUndo}
           onSeen={handleSeen}
+          tagFor={(m) => tagLabel(m)}
+          genreDetails={genreDetails}
         />
         <ConfirmDialog
           visible={confirmingLeave}

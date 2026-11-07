@@ -17,7 +17,7 @@ import { Avatar, NavBar, Screen, Stripes, MovieMeta } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
-import { EyeOff, Hand, Info } from "lucide-react-native";
+import { ChevronDown, EyeOff, Hand, Info } from "lucide-react-native";
 import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
 import { hasFlag, setFlag } from "../../lib/identity";
@@ -42,6 +42,8 @@ export default function SwipeScreen({
   onSwipe,
   onUndo,
   onSeen,
+  tagFor,
+  genreDetails,
   myName
 }: {
   genreTitle: string;
@@ -52,9 +54,12 @@ export default function SwipeScreen({
   onSwipe: (liked: boolean) => void;
   onUndo: () => void;
   onSeen: () => void;
+  tagFor?: (m: Movie) => string | null; // "Brine's pick", "Romance + Horror blend"…
+  genreDetails?: { who: string; what: string; no?: boolean }[]; // tap the top pill to see everyone's picks
   myName: string;
 }) {
   const total = deck.length;
+  const [showGenres, setShowGenres] = useState(false);
   const movie: Movie | undefined = deck[index];
   const done = index >= total;
 
@@ -268,6 +273,11 @@ export default function SwipeScreen({
                 locations={[0.82, 1]}
                 style={StyleSheet.absoluteFill}
               />
+              {!!tagFor?.(m) && (
+                <View style={s.tag} pointerEvents="none">
+                  <Text style={s.tagText}>{tagFor(m)}</Text>
+                </View>
+              )}
             </View>
 
             <View style={s.info}>
@@ -342,9 +352,19 @@ export default function SwipeScreen({
       <NavBar
         onBack={onBack}
         center={
-          <View style={s.genrePill}>
+          <Pressable
+            disabled={!genreDetails?.length}
+            onPress={() => setShowGenres((v) => !v)}
+            hitSlop={8}
+            style={({ pressed }) => [s.genrePill, pressed && s.pressed]}
+          >
             <Text style={s.genrePillText}>{genreTitle}</Text>
-          </View>
+            {!!genreDetails?.length && (
+              <View style={{ transform: [{ rotate: showGenres ? "180deg" : "0deg" }] }}>
+                <ChevronDown size={14} color={C.accent} strokeWidth={2.6} />
+              </View>
+            )}
+          </Pressable>
         }
         right={
           <Text style={s.counter}>
@@ -352,6 +372,20 @@ export default function SwipeScreen({
           </Text>
         }
       />
+
+      {/* everyone's genre picks, opened by tapping the pill */}
+      <View style={{ zIndex: 30 }}>
+        {showGenres && !!genreDetails?.length && (
+          <Pressable style={s.genrePanel} onPress={() => setShowGenres(false)}>
+            {genreDetails.map((d, i) => (
+              <View key={i} style={s.genreLine}>
+                <Text style={[s.genreWho, d.no && { color: "#FF7A6B" }]}>{d.who}</Text>
+                <Text style={s.genreWhat}>{d.what}</Text>
+              </View>
+            ))}
+          </Pressable>
+        )}
+      </View>
 
       {others.length > 0 && (
         <ScrollView
@@ -448,13 +482,43 @@ export default function SwipeScreen({
 }
 
 const s = StyleSheet.create({
+  genrePanel: {
+    position: "absolute",
+    top: 4,
+    left: 24,
+    right: 24,
+    padding: 16,
+    gap: 10,
+    borderRadius: 20,
+    backgroundColor: C.surface2,
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  genreLine: { flexDirection: "row", gap: 10 },
+  genreWho: { width: 90, fontFamily: F.textBold, fontSize: 14, color: C.accent },
+  genreWhat: { flex: 1, fontFamily: F.textSemi, fontSize: 14, color: C.cream },
   genrePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     height: 32,
     paddingHorizontal: 14,
     borderRadius: 999,
     backgroundColor: C.pillGreen,
+  },
+  tag: {
+    position: "absolute",
+    left: 14,
+    bottom: 12,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(13,17,13,0.78)",
     justifyContent: "center",
   },
+  tagText: { fontFamily: F.textBold, fontSize: 12, color: C.accent },
   genrePillText: { fontFamily: F.textBold, fontSize: 13, color: C.accent },
   counter: {
     width: 40,

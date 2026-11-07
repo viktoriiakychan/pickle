@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { View, Text, Image, Pressable, ScrollView, StyleSheet } from "react-native";
+import CardBack from "../CardBack";
 import { LinearGradient } from "expo-linear-gradient";
 import { Button, Screen, Stripes } from "../ui-kit";
 import { C, F } from "../theme";
@@ -26,6 +28,7 @@ export default function ResultsScreen({
 }) 
 {
   const [top, ...rest] = matches;
+  const [open, setOpen] = useState<Movie | null>(null); // movie whose details pop-up is showing
   const solo = groupSize === 1;
   const count = `${matches.length} ${matches.length === 1 ? "movie" : "movies"}`;
   const heading =
@@ -51,7 +54,7 @@ export default function ResultsScreen({
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 22 }} showsVerticalScrollIndicator={false}>
           {top ? (
-            <Pressable style={s.hero} onPress={() => onWhereToWatch(top)}>
+            <Pressable style={s.hero} onPress={() => setOpen(top)}>
               <Stripes />
               {(top.backdrop || top.poster) && (
                 <Image source={{ uri: top.backdrop ?? top.poster! }} style={StyleSheet.absoluteFill} resizeMode="cover" />
@@ -81,7 +84,7 @@ export default function ResultsScreen({
           {rest.length > 0 && (
             <View style={{ gap: 10 }}>
               {rest.map((m, i) => (
-                <Pressable key={m.id} style={s.row} onPress={() => onWhereToWatch(m)}>
+                <Pressable key={m.id} style={s.row} onPress={() => setOpen(m)}>
                   <View style={s.thumb}>
                     <Stripes a={i % 2 ? "#203028" : "#20282E"} b={C.stripeB} band={6} />
                     {m.poster && <Image source={{ uri: m.poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
@@ -112,6 +115,16 @@ export default function ResultsScreen({
       <Pressable onPress={onLeave} style={{ alignSelf: "center", padding: 10 }}>
         <Text style={{ fontFamily: F.textSemi, fontSize: 14, color: C.muted }}>Done, leave room</Text>
       </Pressable>
+
+      {/* details pop-up: same info as the back of the swipe card, without leaving the app */}
+      {open && (
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(null)} accessibilityLabel="Close" />
+          <View style={s.sheet}>
+            <CardBack movie={open} onFlipBack={() => setOpen(null)} closeIcon />
+          </View>
+        </View>
+      )}
     </Screen>
   );
 }
@@ -141,4 +154,12 @@ const s = StyleSheet.create({
   rowTitle: { fontFamily: F.textBold, fontSize: 16, color: C.cream },
   rowMeta: { fontFamily: F.text, fontSize: 13, color: C.muted },
   buttons: { flexDirection: "row", gap: 10 },
+  overlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(13,17,13,0.82)",
+    justifyContent: "center",
+    padding: 20,
+    zIndex: 50,
+  },
+  sheet: { height: "82%", borderRadius: 28, overflow: "hidden", backgroundColor: C.surface },
 });

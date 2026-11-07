@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet } from "react-native";
-import { RotateCcw } from "lucide-react-native";
+import { RotateCcw, X } from "lucide-react-native";
 import { C, F } from "./theme";
 import { Button } from "./ui-kit";
 import { fetchDetails, metaLine, providerUrl, whereToWatchUrl, Movie, MovieDetails } from "../lib/tmdb";
 
 // Back of the swipe card: everything you need to decide, without leaving the deck.
-export default function CardBack({ movie, onFlipBack }: { movie: Movie; onFlipBack: () => void }) {
+export default function CardBack({
+  movie,
+  onFlipBack,
+  closeIcon = false,
+}: {
+  movie: Movie;
+  onFlipBack: () => void;
+  closeIcon?: boolean; // true = shows ✕ (used as a pop-up on the results screen)
+}) {
   const [details, setDetails] = useState<MovieDetails | null>(null);
 
   useEffect(() => {
@@ -28,10 +36,14 @@ export default function CardBack({ movie, onFlipBack }: { movie: Movie; onFlipBa
         <Pressable
           onPress={onFlipBack}
           hitSlop={10}
-          accessibilityLabel="Back to poster"
+          accessibilityLabel={closeIcon ? "Close" : "Back to poster"}
           style={({ pressed }) => [s.flipBtn, pressed && { transform: [{ scale: 0.94 }] }]}
         >
-          <RotateCcw size={16} color={C.cream} strokeWidth={2.4} />
+          {closeIcon ? (
+            <X size={16} color={C.cream} strokeWidth={2.4} />
+          ) : (
+            <RotateCcw size={16} color={C.cream} strokeWidth={2.4} />
+          )}
         </Pressable>
       </View>
 

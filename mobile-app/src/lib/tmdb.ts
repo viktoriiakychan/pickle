@@ -25,6 +25,13 @@ export const GENRES: Genre[] = [
   { id: "53", title: "Thriller" },
 ];
 
+/** Why a card is in the deck, so the swipe screen can say "Brine's pick" etc. */
+export type MovieTag = {
+  kind: "everyone" | "blend" | "pick"; // everyone picked this genre / two genres mixed / one person's pick
+  genres: string[];                    // genre ids it came from
+  by?: string;                         // player id, for "pick"
+};
+
 export type Movie = {
   id: string;
   title: string;
@@ -35,6 +42,7 @@ export type Movie = {
   poster: string | null;
   backdrop: string | null;
   tagline: string;
+  tag?: MovieTag;
 };
 
 export type MovieDetails = {
@@ -74,28 +82,36 @@ const LEVELS: Record<
   nerd: { sort: "vote_average.desc", minVotes: 150, minRating: 7.3, pages: [1, 15], englishOnly: false },
 };
 
-const discoverUrl = (genre: Genre, level: Level, page: number) => {
+/**
+ * What to ask TMDB for. In with_genres, "35,10749" means BOTH (rom-coms),
+ * "35|10749" means EITHER. without_genres = the "not tonight" genres.
+ */
+export type Query = { with: string; without: string };
+
+const discoverUrl = (q: Query, level: Level, page: number) => {
   const c = LEVELS[level];
   return (
-    `${BASE}/discover/movie?api_key=${API_KEY}&with_genres=${genre.id}&include_adult=false` +
+    `${BASE}/discover/movie?api_key=${API_KEY}&include_adult=false` +
+    (q.with ? `&with_genres=${encodeURIComponent(q.with)}` : "") +
+    (q.without ? `&without_genres=${encodeURIComponent(q.without)}` : "") +
     `&sort_by=${c.sort}&vote_count.gte=${c.minVotes}&vote_average.gte=${c.minRating}` +
     (c.englishOnly ? "&with_original_language=en" : "") +
     `&page=${page}`
   );
 };
 
-/** ~60 movies for this genre + level, from random pages that actually exist. */
-async function fetchPool(genre: Genre, level: Level): Promise<any[]> {
+/** ~60 movies for this query + level, from random pages that actually exist. */
+async function fetchPool(q: Query, level: Level): Promise<any[]> {
   const [lo, hi] = LEVELS[level].pages;
 
   // page 1 tells us how many pages exist for this genre + level
-  const first = await fetch(discoverUrl(genre, level, 1)).then((r) => r.json());
+  const first = await fetch(discoverUrl(q, level, 1)).then((r) => r.json());
   const total = Math.min(first.total_pages ?? 1, 500); // TMDB never goes past page 500
   const from = lo <= total ? lo : 1;
   const to = Math.max(from, Math.min(hi, total));
   const pages = [1, 2, 3].map(() => from + Math.floor(Math.random() * (to - from + 1)));
 
-  const responses = await Promise.all(pages.map((p) => fetch(discoverUrl(genre, level, p)).then((r) => r.json())));
+  const responses = await Promise.all(pages.map((p) => fetch(discoverUrl(q, level, p)).then((r) => r.json())));
   let all = responses.flatMap((d: any) => d.results ?? []);
   if (all.length < DECK_SIZE) all = [...all, ...(first.results ?? [])]; // small genre: use page 1 too
 
@@ -126,8 +142,8 @@ async function toMovies(results: any[]): Promise<Movie[]> {
   }));
 }
 
-/** "If you liked X" for each favourite, only in this genre, best matches first. */
-async function recommendedFor(favs: string[], genre: Genre, level: Level): Promise<any[]> {
+/** "If you liked X" for each favourite, best matches first (genre filtering happens per bucket). */
+async function recommendedFor(favs: string[], level: Level): Promise<any[]> {
   const c = LEVELS[level];
   const lists = await Promise.all(
     favs.map((id) =>
@@ -142,7 +158,6 @@ async function recommendedFor(favs: string[], genre: Genre, level: Level): Promi
   const scores = new Map<number, { movie: any; score: number }>();
   for (const list of lists) {
     for (const m of list) {
-      if (!m.genre_ids?.includes(Number(genre.id))) continue; // only the room's genre
       if ((m.vote_count ?? 0) < c.minVotes) continue;                   // too obscure for this level
       if ((m.vote_average ?? 0) < c.minRating) continue;                // not rated well enough
       if (c.englishOnly && m.original_language !== "en") continue;      // casual = English only
@@ -158,36 +173,200 @@ async function recommendedFor(favs: string[], genre: Genre, level: Level): Promi
     .map((e) => e.movie);
 }
 
-/** Builds the shared deck: up to 14 "for you" + movies for this level, minus anything seen. */
-export async function fetchDeck(
-  genre: Genre,
+/* ── building the deck from everyone's genre picks ───────────────────────
+
+   Example: you pick Romance + Comedy, Brine picks Comedy + Horror,
+   and Brine says "not tonight" to Drama.
+   1. "Not tonight" always wins: Drama is removed from every request.
+   2. Comedy was picked by everyone → about half the deck.
+   3. Blend: the best pair of the other genres (Romance + Horror here),
+      asked for as BOTH, so you get movies that are really a mix.
+   4. Fair split: the rest is shared equally between each person's picks.
+   5. Anything short gets topped up from the other buckets.
+   Solo works the same way with one person: 2 genres = blend + either.        */
+
+export type MoodInput = { id: string; genres: string[]; no: string | null }; // genres [] = "Surprise me"
+
+type Bucket = { q: Query; match: (m: any) => boolean; target: number; tag: MovieTag };
+
+const titleOf = (id: string) => GENRES.find((g) => g.id === id)?.title ?? "";
+
+/** Pure planning step (no network): which requests to make and how many cards from each. */
+export function planDeck(moods: MoodInput[]): { buckets: Bucket[]; plan: Query; label: string } {
+  const vetoes = [...new Set(moods.map((m) => m.no).filter((g): g is string => !!g))];
+  const without = vetoes.join(",");
+  const has = (m: any, g: string) => !!m.genre_ids?.includes(Number(g));
+  const allowed = (m: any) => !vetoes.some((v) => has(m, v));
+  const either = (gs: string[]): Query => ({ with: gs.join("|"), without });
+  const both = (gs: string[]): Query => ({ with: gs.join(","), without });
+
+  // vetoed genres are dropped from everyone's picks; "Surprise me" people don't pull the deck anywhere
+  const people = moods
+    .map((m) => ({ ...m, genres: m.genres.filter((g) => !vetoes.includes(g)) }))
+    .filter((p) => p.genres.length > 0);
+
+  if (!people.length) {
+    const q = { with: "", without };
+    return {
+      buckets: [{ q, match: allowed, target: DECK_SIZE, tag: { kind: "pick", genres: [] } }],
+      plan: q,
+      label: "Surprise",
+    };
+  }
+
+  // how many people picked each genre, most popular first
+  const count = new Map<string, number>();
+  people.forEach((p) => p.genres.forEach((g) => count.set(g, (count.get(g) ?? 0) + 1)));
+  const all = shuffle([...count.keys()]).sort((a, b) => count.get(b)! - count.get(a)!);
+
+  const group = people.length > 1;
+  const everyone = group ? all.filter((g) => count.get(g) === people.length) : [];
+  const buckets: Bucket[] = [];
+  let left = DECK_SIZE;
+
+  // 1. genres everyone picked
+  if (everyone.length) {
+    const onlyThose = people.every((p) => p.genres.every((g) => everyone.includes(g)));
+    const n = onlyThose ? DECK_SIZE : Math.round(DECK_SIZE / 2);
+    buckets.push({
+      q: either(everyone),
+      match: (m) => allowed(m) && everyone.some((g) => has(m, g)),
+      target: n,
+      tag: { kind: "everyone", genres: everyone },
+    });
+    left -= n;
+  }
+
+  // 2. blends (movies that are BOTH genres)
+  const blend = (pair: [string, string], n: number) => {
+    if (n <= 0) return;
+    buckets.push({
+      q: both(pair),
+      match: (m) => allowed(m) && has(m, pair[0]) && has(m, pair[1]),
+      target: n,
+      tag: { kind: "blend", genres: pair },
+    });
+    left -= n;
+  };
+
+  if (everyone.length) {
+    // shared genre + each person's other pick, so everyone gets a blend: rom-com for you, horror-comedy for Brine
+    const pairs = people
+      .map((p) => p.genres.find((g) => !everyone.includes(g)))
+      .filter((g): g is string => !!g)
+      .filter((g, i, gs) => gs.indexOf(g) === i)
+      .map((g) => [everyone[0], g] as [string, string]);
+    const budget = Math.min(left, 2 * pairs.length, 6);
+    pairs.forEach((pair, i) => blend(pair, Math.floor(budget / pairs.length) + (i < budget % pairs.length ? 1 : 0)));
+  } else if (!group && all.length >= 2) {
+    // solo with 2 genres = you want the mix: as many "both" movies as exist,
+    // and only top up with either genre if TMDB runs out (rare combos like Horror + Romance)
+    blend([all[0], all[1]], left);
+    const p = people[0];
+    buckets.push({
+      q: either(p.genres),
+      match: (m) => allowed(m) && p.genres.some((g) => has(m, g)),
+      target: 0, // backup only: used by the top-up step
+      tag: { kind: "pick", genres: p.genres, by: p.id },
+    });
+  } else if (all.length >= 2) {
+    // group, no shared genre: one blend of the two most-picked genres
+    blend([all[0], all[1]], Math.min(left, 8));
+  }
+
+  // 3. fair split of what's left between each person's own picks
+  people.forEach((p, i) => {
+    const n = Math.floor(left / people.length) + (i < left % people.length ? 1 : 0);
+    if (n <= 0) return;
+    buckets.push({
+      q: either(p.genres),
+      match: (m) => allowed(m) && p.genres.some((g) => has(m, g)),
+      target: n,
+      tag: { kind: "pick", genres: p.genres, by: p.id },
+    });
+  });
+
+  // deck name for the swipe pill / results / saved list: "Comedy + Romance", "Comedy + 2 more"
+  const titles = all.map(titleOf);
+  const label = titles.length <= 2 ? titles.join(" + ") : `${titles[0]} + ${titles.length - 1} more`;
+
+  return { buckets, plan: either(all), label };
+}
+
+/** Builds the shared deck for everyone's picks, minus anything anyone has seen. */
+export async function buildDeck(
+  moods: MoodInput[],
   seen: Set<string> = new Set(),
   favs: string[] = [],
   level: Level = "casual"
-): Promise<Movie[]> {
-  const notSeen = (m: any) => !seen.has(String(m.id));
+): Promise<{ deck: Movie[]; plan: Query; label: string }> {
+  const { buckets, plan, label } = planDeck(moods);
+  const fresh = (m: any) => !seen.has(String(m.id));
 
-  const [recs, pool] = await Promise.all([
-    favs.length ? recommendedFor(favs, genre, level) : Promise.resolve([]),
-    fetchPool(genre, level),
+  const [recs, pools] = await Promise.all([
+    favs.length ? recommendedFor(favs, level).catch(() => []) : Promise.resolve([]),
+    Promise.all(buckets.map((b) => fetchPool(b.q, level).catch(() => [] as any[]))),
   ]);
 
-  const forYou = recs.filter(notSeen).slice(0, FOR_YOU);
-  const forYouIds = new Set(forYou.map((m: any) => m.id));
-  const rest = pool.filter((m: any) => notSeen(m) && !forYouIds.has(m.id));
+  const used = new Set<number>();
+  const chosen: { m: any; tag: MovieTag }[] = [];
+  let forYouLeft = FOR_YOU;
 
-  const picked = [...forYou, ...shuffle(rest)].slice(0, DECK_SIZE);
+  buckets.forEach((b, i) => {
+    let n = 0;
+    // "for you" recommendations that fit this bucket go first
+    for (const m of recs) {
+      if (n >= b.target || forYouLeft <= 0) break;
+      if (used.has(m.id) || !fresh(m) || !b.match(m)) continue;
+      used.add(m.id);
+      chosen.push({ m, tag: b.tag });
+      n++;
+      forYouLeft--;
+    }
+    for (const m of shuffle(pools[i])) {
+      if (n >= b.target) break;
+      if (used.has(m.id) || !fresh(m) || !b.match(m)) continue;
+      used.add(m.id);
+      chosen.push({ m, tag: b.tag });
+      n++;
+    }
+  });
 
-  return toMovies(shuffle(picked));
+  // a bucket came up short (rare blend, picky level): top up from the others
+  if (chosen.length < DECK_SIZE) {
+    const spare = shuffle(pools.flatMap((pool, i) => pool.map((m) => ({ m, tag: buckets[i].tag }))));
+    for (const x of spare) {
+      if (chosen.length >= DECK_SIZE) break;
+      if (used.has(x.m.id) || !fresh(x.m)) continue;
+      used.add(x.m.id);
+      chosen.push(x);
+    }
+  }
+
+  // "pick" cards: keep only the picked genres this movie really has, so solo can say "Romance" not "Horror + Romance"
+  chosen.forEach((x) => {
+    if (x.tag.kind !== "pick" || !x.tag.genres.length) return;
+    const real = x.tag.genres.filter((g) => x.m.genre_ids?.includes(Number(g)));
+    if (real.length) x.tag = { ...x.tag, genres: real };
+  });
+
+  // every card would say the same thing (e.g. solo, one genre) → no labels
+  const sameTag = new Set(chosen.map((x) => JSON.stringify(x.tag))).size <= 1;
+
+  const picked = shuffle(chosen.slice(0, DECK_SIZE));
+  const movies = await toMovies(picked.map((x) => x.m));
+  // only add `tag` when there is one: Firestore rejects undefined values
+  const deck = movies.map((mv, i) => (sameTag ? mv : { ...mv, tag: picked[i].tag }));
+  return { deck, plan, label };
 }
 
-/** One extra movie for "Seen it", at the room's level, skipping anything in `exclude`. */
+/** One extra movie for "Seen it", from the room's genres, skipping anything in `exclude`. */
 export async function fetchReplacement(
-  genre: Genre,
+  plan: Query,
   exclude: Set<string>,
   level: Level = "casual"
 ): Promise<Movie | null> {
-  const options = (await fetchPool(genre, level)).filter((m: any) => !exclude.has(String(m.id)));
+  const options = (await fetchPool(plan, level)).filter((m: any) => !exclude.has(String(m.id)));
   if (!options.length) return null;
   const [movie] = await toMovies(shuffle(options).slice(0, 1));
   return movie;
