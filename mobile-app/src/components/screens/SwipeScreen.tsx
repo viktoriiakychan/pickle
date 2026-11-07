@@ -128,17 +128,16 @@ export default function SwipeScreen({
     if (done) return;
     stopHint();
     if (busy.current) {
-      queued.current = liked; // fast taps get queued instead of ignored
+      queued.current = liked;
       return;
     }
     busy.current = true;
-    // faster finger = faster throw; buttons get a nice default speed
-    const speed = Math.max(Math.abs(vx), 2.8);
-    const duration = Math.min(220, Math.max(130, exitX / speed));
+    const speed = Math.max(Math.abs(vx), 2);
+    const duration = Math.min(340, Math.max(240, exitX / speed));
     Animated.timing(pan, {
-      toValue: { x: liked ? exitX : -exitX, y: dy - 20 }, // slight upward arc
+      toValue: { x: liked ? exitX : -exitX, y: dy - 20 },
       duration,
-      easing: Easing.out(Easing.cubic),
+      easing: Easing.out(Easing.quad),
       useNativeDriver: false,
     }).start(() => onSwipe(liked));
   };
