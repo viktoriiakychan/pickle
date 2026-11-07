@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useId, useRef } from "react";
+import { Star } from "lucide-react-native";
 import {
   View,
   Text,
@@ -127,6 +128,40 @@ export function Avatar({
       <Text style={{ fontFamily: F.textHeavy, fontSize: size >= 40 ? 16 : 11, color: C.bg }}>
         {name.charAt(0).toUpperCase()}
       </Text>
+    </View>
+  );
+}
+
+/* "2009 · ★ 6.3 · 1h 34m" with an SVG star, so everything lines up */
+export function MovieMeta({
+  movie,
+  runtime = true,
+  extra,
+  size = 13,
+  color = C.muted,
+}: {
+  movie: { year?: string; rating?: string; runtime?: string };
+  runtime?: boolean;
+  extra?: string; // e.g. "3 of 4 said yes"
+  size?: number;
+  color?: string;
+}) {
+  const text = { fontFamily: F.textSemi, fontSize: size, lineHeight: size + 5, color };
+  const parts: ReactNode[] = [];
+  if (movie.year) parts.push(<Text key="y" style={text}>{movie.year}</Text>);
+  if (movie.rating)
+    parts.push(
+      <View key="r" style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+        <Star size={size - 2} color={color} fill={color} strokeWidth={0} />
+        <Text style={text}>{movie.rating}</Text>
+      </View>
+    );
+  if (runtime && movie.runtime) parts.push(<Text key="t" style={text}>{movie.runtime}</Text>);
+  if (extra) parts.push(<Text key="e" style={text}>{extra}</Text>);
+
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 6 }}>
+      {parts.map((p, i) => [i > 0 && <Text key={`d${i}`} style={text}>·</Text>, p])}
     </View>
   );
 }

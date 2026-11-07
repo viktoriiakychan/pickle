@@ -13,7 +13,7 @@ import {
   ScrollView
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, NavBar, Screen, Stripes } from "../ui-kit";
+import { Avatar, NavBar, Screen, Stripes, MovieMeta } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
@@ -285,16 +285,7 @@ export default function SwipeScreen({
                   <Info size={16} color={C.cream} strokeWidth={2.4} />
                 </Pressable>
               </View>
-              <View style={s.meta}>
-                {[m.year, m.rating && `★ ${m.rating}`, m.runtime]
-                  .filter(Boolean)
-                  .flatMap((part, i) => (i ? ["·", part] : [part]))
-                  .map((part, i) => (
-                    <Text key={i} style={s.metaText}>
-                      {part}
-                    </Text>
-                  ))}
-              </View>
+                <MovieMeta movie={m} />
               {!!(m.tagline || m.overview) && (
                 <Text style={s.hook} numberOfLines={2}>
                   {m.tagline || firstSentence(m.overview)}
