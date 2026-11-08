@@ -78,3 +78,7 @@ export function roomLink(code: string): string | null {
 /** One-off flags on this device, e.g. "already saw the swipe demo". */
 export const hasFlag = (key: string) => read(`pickle.flag.${key}`) === "1";
 export const setFlag = (key: string) => write(`pickle.flag.${key}`, "1"); 
+
+/** Simple counters on this device, e.g. how many times the swipe demo has played. */
+export const getCount = (key: string) => Number(read(`pickle.count.${key}`) ?? 0);
+export const bumpCount = (key: string) => write(`pickle.count.${key}`, String(getCount(key) + 1));

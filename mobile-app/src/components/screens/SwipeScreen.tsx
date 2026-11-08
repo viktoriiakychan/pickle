@@ -17,15 +17,17 @@ import { Avatar, NavBar, Screen, Stripes, MovieMeta } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
-import { ChevronDown, EyeOff, Hand, Info, Undo2 } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, ChevronDown, EyeOff, Info, Undo2 } from "lucide-react-native";
 import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
-import { hasFlag, setFlag } from "../../lib/identity";
+import { bumpCount, getCount, hasFlag, setFlag } from "../../lib/identity";
 
 const SWIPE_THRESHOLD = 100;
 const FLICK_SPEED = 0.6; // px/ms: a flick this fast counts as a swipe even if it's short
 const buzz = () => { try { (globalThis as any).navigator?.vibrate?.(8); } catch {} };
-const HINT_FLAG = "swipeHint"; // first-ever swipe screen shows a demo wiggle
+const HINT_KEY = "swipeHint";
+const HINT_MAX = 2; // swipe demo plays on the first 2 swipe screens, then never again
+const UNDO_FLAG = "undoTip"; // "Changed your mind?" bubble, shown once ever
 
 /** ["Dill"] → "Dill", ["Dill","Brine","Spear"] → "Dill, Brine and Spear" */
 const joinNames = (ns: string[]) =>
@@ -70,15 +72,18 @@ export default function SwipeScreen({
   const exitX = Math.min(Dimensions.get("window").width, MAX_WIDTH) * 1.5;
 
   /* -- first-time demo: wiggle the card right, then left ------------- */
-  const [showHint, setShowHint] = useState(() => !hasFlag(HINT_FLAG));
-  const hintFade = useRef(new Animated.Value(0)).current; // the pill's opacity
+  const [showHint, setShowHint] = useState(() => getCount(HINT_KEY) < HINT_MAX);
+  const hintCounted = useRef(false); // so one showing only counts once
   const hintAnim = useRef<Animated.CompositeAnimation | null>(null);
 
   const stopHint = () => {
     if (!showHint) return;
     hintAnim.current?.stop();
     hintAnim.current = null;
-    setFlag(HINT_FLAG);   // never show it again on this device
+    if (!hintCounted.current) {
+      hintCounted.current = true;
+      bumpCount(HINT_KEY);
+    }
     setShowHint(false);
     if (!busy.current) pan.setValue({ x: 0, y: 0 }); // snap the card back to the middle
   };
@@ -92,14 +97,29 @@ export default function SwipeScreen({
 
     hintAnim.current = Animated.sequence([
       Animated.delay(400),
-      Animated.timing(hintFade, { toValue: 1, duration: 150, useNativeDriver: false }),
-      move(80, 350), Animated.delay(200), move(0, 250),   // right, back
-      move(-80, 350), Animated.delay(200), move(0, 250),  // left, back
-      Animated.timing(hintFade, { toValue: 0, duration: 200, useNativeDriver: false }), // gone straight away
+      move(80, 450), Animated.delay(500), move(0, 300),   // right: "Pick" pill fades in with the card
+      Animated.delay(150),
+      move(-80, 450), Animated.delay(500), move(0, 300),  // left: "Pass" pill
     ]);
     hintAnim.current.start(({ finished }) => finished && stopHint());
     return () => hintAnim.current?.stop();
   }, []);
+
+  /* -- undo tip: right after the first swipe, once ever ---------------- */
+  const undoTip = useRef(new Animated.Value(0)).current;
+  const [showUndoTip, setShowUndoTip] = useState(false);
+  useEffect(() => {
+    if (index !== 1 || hasFlag(UNDO_FLAG)) return;
+    setFlag(UNDO_FLAG);
+    setShowUndoTip(true);
+    const a = Animated.sequence([
+      Animated.timing(undoTip, { toValue: 1, duration: 200, useNativeDriver: false }),
+      Animated.delay(2400),
+      Animated.timing(undoTip, { toValue: 0, duration: 300, useNativeDriver: false }),
+    ]);
+    a.start(() => setShowUndoTip(false));
+    return () => a.stop();
+  }, [index]);
 
   /* -- card flip ------------------------------------------------------- */
   const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
@@ -203,6 +223,12 @@ export default function SwipeScreen({
   const rotate = pan.x.interpolate({ inputRange: [-200, 0, 200], outputRange: ["-12deg", "0deg", "12deg"] });
   const pickOpacity = pan.x.interpolate({ inputRange: [0, SWIPE_THRESHOLD], outputRange: [0, 1], extrapolate: "clamp" });
   const passOpacity = pan.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: "clamp" });
+
+  // demo pills follow the card: lean right → "Pick" pill, lean left → "Pass" pill
+  const hintRight = pan.x.interpolate({ inputRange: [0, 60], outputRange: [0, 1], extrapolate: "clamp" });
+  const hintLeft = pan.x.interpolate({ inputRange: [-60, 0], outputRange: [1, 0], extrapolate: "clamp" });
+  // pills drift a little the same way as the card (no tilt), so they feel attached to the motion
+  const hintSlide = pan.x.interpolate({ inputRange: [-80, 0, 80], outputRange: [-12, 0, 12], extrapolate: "clamp" });
 
   // next card sits underneath and grows into place as you drag the top one away
   const away = pan.x.interpolate({ inputRange: [-150, 0, 150], outputRange: [1, 0, 1], extrapolate: "clamp" });
@@ -426,10 +452,22 @@ export default function SwipeScreen({
           )}
 
           {showHint && !done && (
-            <Animated.View pointerEvents="none" style={[s.hint, { zIndex: 20, opacity: hintFade }]}>
-              <Hand size={16} color={C.bg} strokeWidth={2.4} />
-              <Text style={s.hintText}>Swipe right to pick, left to pass</Text>
-            </Animated.View>
+            <>
+              <Animated.View
+                pointerEvents="none"
+                style={[s.hint, { zIndex: 20, opacity: hintRight, transform: [{ translateX: hintSlide }] }]}
+              >
+                <Text style={s.hintText}>Swipe right to Pick</Text>
+                <ArrowRight size={16} color={C.bg} strokeWidth={2.6} />
+              </Animated.View>
+              <Animated.View
+                pointerEvents="none"
+                style={[s.hint, s.hintPass, { zIndex: 20, opacity: hintLeft, transform: [{ translateX: hintSlide }] }]}
+              >
+                <ArrowLeft size={16} color={C.bg} strokeWidth={2.6} />
+                <Text style={s.hintText}>Swipe left to Pass</Text>
+              </Animated.View>
+            </>
           )}
         </View>
       </View>
@@ -444,14 +482,36 @@ export default function SwipeScreen({
           <Text style={[s.bigBtnText, { color: C.cream }]}>Pass</Text>
         </Pressable>
 
-        <Pressable
-          accessibilityLabel="Undo"
-          disabled={index === 0}
-          onPress={() => !busy.current && onUndo()}
-          style={({ pressed }) => [s.undoBtn, index === 0 && s.off, pressed && s.pressed]}
-        >
-          <Undo2 size={20} color={C.cream} strokeWidth={2.4} />
-        </Pressable>
+        <View>
+          {showUndoTip && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                s.undoTip,
+                {
+                  opacity: undoTip,
+                  transform: [{ translateY: undoTip.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }],
+                },
+              ]}
+            >
+              <View style={s.undoTipBubble}>
+                <Text style={s.undoTipText} numberOfLines={1}>
+                  Changed your mind? Undo
+                </Text>
+              </View>
+              <View style={s.undoTipArrow} />
+            </Animated.View>
+          )}
+
+          <Pressable
+            accessibilityLabel="Undo"
+            disabled={index === 0}
+            onPress={() => !busy.current && onUndo()}
+            style={({ pressed }) => [s.undoBtn, index === 0 && s.off, pressed && s.pressed]}
+          >
+            <Undo2 size={20} color={C.cream} strokeWidth={2.4} />
+          </Pressable>
+        </View>
 
         <Pressable
           accessibilityLabel="Pick"
@@ -598,12 +658,16 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
+  undoTip: { position: "absolute", bottom: 54, left: -78, width: 200, alignItems: "center", zIndex: 40 },
+  undoTipBubble: { height: 32, paddingHorizontal: 12, borderRadius: 999, backgroundColor: C.cream, justifyContent: "center" },
+  undoTipText: { fontFamily: F.textBold, fontSize: 13, color: C.bg },
+  undoTipArrow: { width: 10, height: 10, marginTop: -5, backgroundColor: C.cream, transform: [{ rotate: "45deg" }] },
   off: { opacity: 0.35 },
   pressed: { transform: [{ scale: 0.94 }] },
   hint: {
     position: "absolute",
     alignSelf: "center",
-    bottom: 120,
+    top: "40%",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -613,6 +677,7 @@ const s = StyleSheet.create({
     backgroundColor: C.accent,
   },
   hintText: { fontFamily: F.textBold, fontSize: 14, color: C.bg },
+  hintPass: { backgroundColor: C.cream },
   posterBox: { flex: 1, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   infoBtn: {
