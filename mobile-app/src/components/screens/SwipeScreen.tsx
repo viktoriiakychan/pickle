@@ -342,7 +342,7 @@ export default function SwipeScreen({
               onPressIn={() => (dragged.current = false)}
               onPress={() => !dragged.current && toggleFlip()}
             >
-              <CardBack movie={m} onFlipBack={toggleFlip} />
+              <CardBack movie={m} onFlipBack={toggleFlip} active={flipped} />
             </Pressable>
           </Animated.View>
         )}

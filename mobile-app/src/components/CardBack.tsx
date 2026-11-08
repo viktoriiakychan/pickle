@@ -1,19 +1,24 @@
 import { useEffect, useState } from "react";
-import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet } from "react-native";
+import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet, Platform } from "react-native";
 import { RotateCcw, X } from "lucide-react-native";
 import { C, F } from "./theme";
 import { Button } from "./ui-kit";
 import { fetchDetails, metaLine, providerUrl, whereToWatchUrl, Movie, MovieDetails } from "../lib/tmdb";
+import TrailerPreview from "./TrailerPreview";
 
 // Back of the swipe card: everything you need to decide, without leaving the deck.
 export default function CardBack({
   movie,
   onFlipBack,
   closeIcon = false,
+  active = true,
+  warm = false,
 }: {
   movie: Movie;
   onFlipBack: () => void;
-  closeIcon?: boolean; // true = shows ✕ (used as a pop-up on the results screen)
+  closeIcon?: boolean;
+  active?: boolean;
+   warm?: boolean;
 }) {
   const [details, setDetails] = useState<MovieDetails | null>(null);
 
@@ -48,6 +53,15 @@ export default function CardBack({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.body}>
+        {!!details?.trailerKey && (
+          <TrailerPreview
+            videoKey={details.trailerKey}
+            backdrop={movie.backdrop ?? movie.poster}
+            warm={warm}
+            active={active}
+          />
+        )}
+
         {!!details?.tagline && <Text style={s.tagline}>{details.tagline}</Text>}
 
         {!!details?.genres.length && (
@@ -62,9 +76,10 @@ export default function CardBack({
 
         {!!movie.overview && <Text style={s.overview}>{movie.overview}</Text>}
 
-        {details?.trailerKey && (
+        {details?.trailerKey && Platform.OS !== "web" && (
           <Button
-            label="Watch trailer"
+            label="Full trailer on YouTube"
+            kind="outline"
             height={44}
             fontSize={14}
             onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${details.trailerKey}`)}
