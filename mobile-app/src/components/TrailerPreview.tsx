@@ -5,9 +5,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ExternalLink, Play, Volume2, VolumeX } from "lucide-react-native";
 import { C, F } from "./theme";
 
+// Muted trailer preview, Netflix-style. Web only for now (on the phone app it shows nothing).
+// warm   = load the player early, paused (they've been looking at the poster for a bit)
+// active = this side is showing: play it. Flipping back pauses, mutes and rewinds it.
 const SKIP_INTRO = 10; // seconds: skips most studio-logo intros…
 const SHORT_VIDEO = 30; // …but videos this short (teasers) start from 0:00
 const FALLBACK_MS = 3000; // if YouTube never tells us it's playing, show the video anyway
+
+// Android Chrome treats a sideways drag as its own gesture (scroll / back) and cancels our touch,
+// so the card underneath thinks it's a swipe. "touch-action: none" tells the browser to keep out.
+const NO_BROWSER_GESTURES = (Platform.OS === "web" ? { touchAction: "none" } : {}) as object;
 
 /** 151 → "2:31" */
 const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
@@ -211,6 +218,9 @@ export default function TrailerPreview({
   return (
     <View
       style={{ gap: 8 }}
+      // On web, buttons fire on the browser's "click", which bubbles up to the card's
+      // "tap to flip back". Stopping it here means taps on the video, the line or the time
+      // never flip the card, but taps anywhere else on the card still do.
       {...(Platform.OS === "web" ? ({ onClick: (e: any) => e.stopPropagation() } as any) : {})}
     >
       {/* tap the video = pause / play */}
@@ -276,7 +286,7 @@ export default function TrailerPreview({
       {/* progress line: tap or drag it to jump around. Always takes its space (so nothing jumps),
           fades in once we know the length. */}
       <Animated.View
-        style={[s.scrub, { opacity: barIn }]}
+        style={[s.scrub, NO_BROWSER_GESTURES, { opacity: barIn }]}
         onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
         onStartShouldSetResponder={() => duration > 0}
         onMoveShouldSetResponder={() => duration > 0}
@@ -372,7 +382,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  scrub: { height: 18, justifyContent: "center", marginVertical: -6 }, // tall invisible touch area around the thin line
+  // big invisible touch area around the thin line (36px tall: easy to grab with a thumb on any phone).
+  // The negative margin keeps the gap to the video and the time text looking the same as before.
+  scrub: { height: 36, justifyContent: "center", marginVertical: -15 },
   track: { height: 4, borderRadius: 2, backgroundColor: C.surface2, overflow: "hidden" },
   knob: {
     position: "absolute",
