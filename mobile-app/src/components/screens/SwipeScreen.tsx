@@ -125,6 +125,14 @@ export default function SwipeScreen({
   const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
   const [flipped, setFlipped] = useState(false);
 
+  // looked at this poster for 1.5s → start loading its trailer in the background (paused)
+  const [warm, setWarm] = useState(false);
+  useEffect(() => {
+    setWarm(false);
+    const t = setTimeout(() => setWarm(true), 1500);
+    return () => clearTimeout(t); // swiped before 1.5s → never loads
+  }, [index]);
+
   const [area, setArea] = useState({ w: 0, h: 0 });
   const INFO_H = 96;
   const POSTER_RATIO = 1.5; // real poster shape
@@ -342,7 +350,7 @@ export default function SwipeScreen({
               onPressIn={() => (dragged.current = false)}
               onPress={() => !dragged.current && toggleFlip()}
             >
-              <CardBack movie={m} onFlipBack={toggleFlip} active={flipped} />
+              <CardBack movie={m} onFlipBack={toggleFlip} active={flipped} warm={warm} />
             </Pressable>
           </Animated.View>
         )}
@@ -384,7 +392,9 @@ export default function SwipeScreen({
             hitSlop={8}
             style={({ pressed }) => [s.genrePill, pressed && s.pressed]}
           >
-            <Text style={s.genrePillText}>{genreTitle}</Text>
+            <Text style={s.genrePillText} numberOfLines={1}>
+              {genreTitle}
+            </Text>
             {!!genreDetails?.length && (
               <View style={{ transform: [{ rotate: showGenres ? "180deg" : "0deg" }] }}>
                 <ChevronDown size={14} color={C.accent} strokeWidth={2.6} />
@@ -560,6 +570,8 @@ const s = StyleSheet.create({
   genreWho: { width: 90, fontFamily: F.textBold, fontSize: 14, color: C.accent },
   genreWhat: { flex: 1, fontFamily: F.textSemi, fontSize: 14, color: C.cream },
   genrePill: {
+    maxWidth: "56%", // long names end in "…" instead of pushing into the Leave button
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -579,7 +591,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   tagText: { fontFamily: F.textBold, fontSize: 12, color: C.accent },
-  genrePillText: { fontFamily: F.textBold, fontSize: 13, color: C.accent },
+  genrePillText: { flexShrink: 1, fontFamily: F.textBold, fontSize: 13, color: C.accent },
   counter: {
     width: 40,
     textAlign: "right",

@@ -9,6 +9,7 @@ import {
   StyleSheet,
   StyleProp,
   ViewStyle,
+  useWindowDimensions,
 } from "react-native";
 import Svg, { Defs, Pattern, Rect } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,23 +39,30 @@ export function NavBar({
   center?: ReactNode;
   right?: ReactNode;
 }) {
+  // the "Leave" word only fits next to a centred title on wider screens; narrow phones get just the arrow
+  const { width } = useWindowDimensions();
+  const showLabel = !!backLabel && Math.min(width, MAX_WIDTH) >= 400;
+
   return (
     <View style={s.nav}>
-      {onBack ? (
-        <Pressable
-          onPress={onBack}
-          style={[s.back, !!backLabel && s.backWide]}
-          accessibilityLabel={backLabel ?? "Back"}
-          hitSlop={8}
-        >
-          <ArrowLeft size={backLabel ? 16 : 20} color={backLabel ? C.muted : C.cream} strokeWidth={2.4} />
-          {!!backLabel && <Text style={s.backText}>{backLabel}</Text>}
-        </Pressable>
-      ) : (
-        <View style={{ width: 40 }} />
-      )}
+      {/* left and right are equal-width boxes, so the middle is always truly centred */}
+      <View style={s.navSide}>
+        {onBack && (
+          <Pressable
+            onPress={onBack}
+            style={[s.back, showLabel && s.backWide]}
+            accessibilityLabel={backLabel ?? "Back"}
+            hitSlop={8}
+          >
+            <ArrowLeft size={showLabel ? 16 : 20} color={backLabel ? C.muted : C.cream} strokeWidth={2.4} />
+            {showLabel && <Text style={s.backText}>{backLabel}</Text>}
+          </Pressable>
+        )}
+      </View>
+
       {typeof center === "string" ? <Text style={s.navTitle}>{center}</Text> : center}
-      {right ?? <View style={{ width: 40 }} />}
+
+      <View style={[s.navSide, { alignItems: "flex-end" }]}>{right}</View>
     </View>
   );
 }
@@ -236,6 +244,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   column: { flex: 1, width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" },
 
+  navSide: { flex: 1, alignItems: "flex-start" },
   nav: {
     height: 52,
     flexDirection: "row",
