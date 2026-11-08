@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useId, useRef } from "react";
-import { Star } from "lucide-react-native";
+import { ArrowLeft, Star } from "lucide-react-native";
 import {
   View,
   Text,
@@ -29,18 +29,26 @@ export function Screen({ children }: { children: ReactNode }) {
 /* ── Top bar: round back button, centred title, spacer ─────────────── */
 export function NavBar({
   onBack,
+  backLabel,
   center,
   right,
 }: {
   onBack?: () => void;
+  backLabel?: string;
   center?: ReactNode;
   right?: ReactNode;
 }) {
   return (
     <View style={s.nav}>
       {onBack ? (
-        <Pressable onPress={onBack} style={s.back} accessibilityLabel="Back" hitSlop={8}>
-          <Text style={s.backArrow}>←</Text>
+        <Pressable
+          onPress={onBack}
+          style={[s.back, !!backLabel && s.backWide]}
+          accessibilityLabel={backLabel ?? "Back"}
+          hitSlop={8}
+        >
+          <ArrowLeft size={backLabel ? 16 : 20} color={backLabel ? C.muted : C.cream} strokeWidth={2.4} />
+          {!!backLabel && <Text style={s.backText}>{backLabel}</Text>}
         </Pressable>
       ) : (
         <View style={{ width: 40 }} />
@@ -243,7 +251,16 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  backArrow: { fontSize: 18, color: C.cream }, // system font arrow, like the design
+  backWide: {
+    width: "auto",
+    minWidth: 40,
+    height: 32,          
+    flexDirection: "row",
+    gap: 4,
+    paddingLeft: 10,
+    paddingRight: 12,
+  },
+  backText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted }, // system font arrow, like the design
   navTitle: { fontSize: 15, fontFamily: F.textSemi, color: C.muted },
 
   btn: { borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },

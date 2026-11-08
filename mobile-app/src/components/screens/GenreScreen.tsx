@@ -88,7 +88,7 @@ export default function GenreScreen({
 
   return (
     <Screen>
-      <NavBar onBack={onBack} center={solo ? undefined : presence} />
+      <NavBar onBack={onBack} backLabel="Leave" center={solo ? undefined : presence} />
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
         <View style={{ gap: 8 }}>

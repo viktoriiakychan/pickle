@@ -28,7 +28,7 @@ export default function JoinScreen({
 
   return (
     <Screen>
-      <NavBar onBack={onBack} center="Join a room" />
+      <NavBar onBack={onBack}  center="Join a room" />
       <View style={s.body}>
         <Text style={s.title}>Got a code?</Text>
 

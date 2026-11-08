@@ -37,7 +37,7 @@ export default function LobbyScreen({
 
   return (
     <Screen>
-      <NavBar onBack={onBack} center="Your room" />
+      <NavBar onBack={onBack} backLabel="Leave" center="Your room" />
       <View style={s.body}>
         <Text style={s.title}>
           {isHost ? "Send this code to your movie buddy" : `You're in! Waiting for ${host?.name ?? "the host"} to start`}

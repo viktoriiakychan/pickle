@@ -17,7 +17,7 @@ import { Avatar, NavBar, Screen, Stripes, MovieMeta } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
-import { ChevronDown, EyeOff, Hand, Info } from "lucide-react-native";
+import { ChevronDown, EyeOff, Hand, Info, Undo2 } from "lucide-react-native";
 import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
 import { hasFlag, setFlag } from "../../lib/identity";
@@ -350,7 +350,7 @@ export default function SwipeScreen({
   return (
     <Screen>
       <NavBar
-        onBack={onBack}
+        onBack={onBack} backLabel="Leave"
         center={
           <Pressable
             disabled={!genreDetails?.length}
@@ -450,7 +450,7 @@ export default function SwipeScreen({
           onPress={() => !busy.current && onUndo()}
           style={({ pressed }) => [s.undoBtn, index === 0 && s.off, pressed && s.pressed]}
         >
-          <Text style={s.undoText}>↺</Text>
+          <Undo2 size={20} color={C.cream} strokeWidth={2.4} />
         </Pressable>
 
         <Pressable
@@ -549,7 +549,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 2.5,
+    backgroundColor: "rgba(13,17,13,0.6)", // dark see-through, so the stamp reads on any poster
   },
+  
   stampPick: { left: 20, borderColor: C.accent, transform: [{ rotate: "-12deg" }] },
   stampPass: { right: 20, borderColor: C.cream, transform: [{ rotate: "12deg" }] },
   stampText: { fontFamily: F.textHeavy, fontSize: 22 },
@@ -585,11 +587,17 @@ const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 999,
-    backgroundColor: C.surface,
+    backgroundColor: C.surface2,
+    borderWidth: 1.5,
+    borderColor: C.line,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  undoText: { fontSize: 18, color: C.muted },
   off: { opacity: 0.35 },
   pressed: { transform: [{ scale: 0.94 }] },
   hint: {
