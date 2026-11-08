@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
-import { Check, Shuffle } from "lucide-react-native";
+import { Check, Shuffle, X } from "lucide-react-native";
 import { Avatar, Button, NavBar, Screen } from "../ui-kit";
 import { C, F } from "../theme";
 import { GENRES } from "../../lib/tmdb";
@@ -43,10 +43,22 @@ export default function GenreScreen({
   const notReady = players.filter((p) => !isReady(p));
   const anyoneChose = players.some((p) => p.mood.genres.length || p.mood.any);
 
+  // someone said "not tonight" to a genre I picked → my pick is cancelled, I get a free slot and a heads-up
+  const [notice, setNotice] = useState<string | null>(null);
+  const othersNos = others.map((p) => p.mood.no ?? "").join(",");
+  useEffect(() => {
+    const lost = mine.genres.filter((g) => others.some((p) => p.mood.no === g));
+    if (!lost.length) return;
+    const by = others.find((p) => p.mood.no === lost[0])!.name;
+    setNotice(`${by} said no to ${titleOf(lost[0])}, so it's been removed. Pick something else?`);
+    onChange({ ...mine, genres: mine.genres.filter((g) => !lost.includes(g)), ready: false });
+  }, [othersNos]);
+
   // any change to your picks means you're not "ready" any more
   const update = (patch: Partial<Mood>) => onChange({ ...mine, ...patch, ready: false });
 
   const toggle = (id: string) => {
+    setNotice(null); // they've reacted to it
     if (mine.genres.includes(id)) update({ genres: mine.genres.filter((g) => g !== id) });
     else if (mine.genres.length < MAX_GENRES) update({ genres: [...mine.genres, id], any: false });
     else update({ genres: [...mine.genres.slice(0, MAX_GENRES - 1), id], any: false }); // already full: your first pick stays, the last one gets swapped
@@ -115,6 +127,13 @@ export default function GenreScreen({
               </View>
             ))}
           </View>
+        )}
+
+        {!!notice && (
+          <Pressable onPress={() => setNotice(null)} style={s.notice} accessibilityLabel="Dismiss">
+            <Text style={s.noticeText}>{notice}</Text>
+            <X size={14} color={NO_RED} strokeWidth={2.6} />
+          </Pressable>
         )}
 
         {/* genres */}
@@ -191,6 +210,7 @@ export default function GenreScreen({
                   );
                 })}
               </View>
+              {!solo && <Text style={s.noHint}>Your "no" removes it for everyone, even if someone picked it.</Text>}
             </>
           ) : (
             <Pressable onPress={() => setShowNo(true)} hitSlop={8} style={{ alignSelf: "flex-start" }}>
@@ -271,6 +291,18 @@ const s = StyleSheet.create({
   },
   noOn: { backgroundColor: NO_RED, borderColor: NO_RED },
   smallChipText: { fontFamily: F.textSemi, fontSize: 13, color: C.muted },
+  notice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,122,107,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,122,107,0.35)",
+  },
+  noticeText: { flex: 1, fontFamily: F.textSemi, fontSize: 13, lineHeight: 18, color: NO_RED },
+  noHint: { fontFamily: F.text, fontSize: 12, color: C.faint },
   vetoLine: { fontFamily: F.textSemi, fontSize: 13, color: NO_RED },
   link: { fontFamily: F.textSemi, fontSize: 14, color: C.muted, textDecorationLine: "underline" },
 
