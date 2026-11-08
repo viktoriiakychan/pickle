@@ -40,7 +40,10 @@ export function saveNight(night: Omit<Night, "movies"> & { movies: Movie[] }) {
     ...night,
     movies: night.movies.map(({ id, title, year, rating, poster }) => ({ id, title, year, rating, poster })),
   };
-  const others = load().filter((n) => n.id !== entry.id);
+  const all = load();
+  const old = all.find((n) => n.id === entry.id);
+  if (old && old.movies.length > entry.movies.length) return; // never shrink a night that's already saved
+  const others = all.filter((n) => n.id !== entry.id);
   store([entry, ...others].slice(0, KEEP)); // newest first, max 50
 }
 

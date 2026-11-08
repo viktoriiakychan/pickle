@@ -32,7 +32,7 @@ import type { Genre, Movie, Query } from "./tmdb";
 
 export const MAX_PLAYERS = 10;
 
-export type Player = { name: string; joinedAt: number };
+export type Player = { name: string; joinedAt: number; left?: boolean }; // left = went home after swiping, picks still count
 export type Stage = "lobby" | "genre" | "swiping";
 /** One person's genre choice. genres = up to MAX_GENRES ids, any = "Surprise me", no = "Not tonight". */
 export type Mood = { genres: string[]; any: boolean; no: string | null; ready: boolean };
@@ -123,14 +123,19 @@ export async function leaveRoom(code: string, myId: string): Promise<void> {
     const snap = await tx.get(ref);
     if (!snap.exists()) return;
     const room = snap.data() as Room;
-    const others = Object.keys(room.players).filter((id) => id !== myId);
-    const update: Record<string, any> = {
-      [`players.${myId}`]: deleteField(),
-      [`progress.${myId}`]: deleteField(),
-      [`picks.${myId}`]: deleteField(),
-      [`moods.${myId}`]: deleteField(),
-    };
-    if (room.hostId === myId && others.length) update.hostId = others[0]; // hand over host
+    const others = Object.keys(room.players).filter((id) => id !== myId && !room.players[id].left);
+    const finished =
+      room.stage === "swiping" && !!room.deck && (room.progress?.[myId] ?? 0) >= room.deck.length;
+
+    const update: Record<string, any> = finished
+      ? { [`players.${myId}.left`]: true }
+      : {
+          [`players.${myId}`]: deleteField(),
+          [`progress.${myId}`]: deleteField(),
+          [`picks.${myId}`]: deleteField(),
+          [`moods.${myId}`]: deleteField(),
+        };
+    if (room.hostId === myId && others.length) update.hostId = others[0]; // hand over host // hand over host
     tx.update(ref, update);
   });
 }
@@ -161,11 +166,14 @@ export const startSwiping = (code: string, deck: Movie[], label: string, plan: Q
     picks: {},
   });
 
-/** "New genre" on the results screen: back to the picker, scores wiped.
- *  Everyone keeps their last picks but has to tap Ready again. */
-export function newRound(code: string, ids: string[]) {
+export function newRound(code: string, ids: string[], gone: string[] = []) {
   const update: Record<string, any> = { stage: "genre", genre: null, plan: null, deck: null, progress: {}, picks: {} };
   ids.forEach((id) => (update[`moods.${id}.ready`] = false));
+  // people who left after the last round aren't part of the new one
+  gone.forEach((id) => {
+    update[`players.${id}`] = deleteField();
+    update[`moods.${id}`] = deleteField();
+  });
   return updateDoc(roomRef(code), update);
 }
 

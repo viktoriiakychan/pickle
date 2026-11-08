@@ -398,7 +398,13 @@ export default function Index() {
           matches={matches.map((m) => m.movie)}
           votes={Object.fromEntries(matches.map((m) => [m.movie.id, m.yes]))}
           groupSize={ids.length}
-          onNewGenre={() => newRound(room.code, ids)}
+          onNewGenre={() =>
+            newRound(
+              room.code,
+              ids.filter((id) => !room.players[id].left),
+              ids.filter((id) => room.players[id].left)
+            )
+          }
           onWhereToWatch={openWhereToWatch}
           onLeave={handleLeave}
         />
