@@ -26,9 +26,13 @@ import {
   arrayRemove,
   deleteField,
   serverTimestamp,
+  Timestamp
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import type { Genre, Movie, Query } from "./tmdb";
+
+const ROOM_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const expiresAt = () => Timestamp.fromMillis(Date.now() + ROOM_LIFETIME_MS);
 
 export const MAX_PLAYERS = 10;
 
@@ -80,6 +84,8 @@ export async function createRoom(myId: string, solo = false): Promise<string> {
     const ref = roomRef(code);
     const existing = await getDoc(ref);
     const createdAt = existing.data()?.createdAt?.toMillis?.() ?? 0;
+    createdAt: serverTimestamp(),
+    expireAt: expiresAt(),
     const isFresh = Date.now() - createdAt < 24 * 60 * 60 * 1000; // under a day old = still in use
     if (existing.exists() && isFresh) continue;
     
