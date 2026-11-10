@@ -47,6 +47,7 @@ export type Movie = {
 };
 
 export type MovieDetails = {
+  overview: string;
   cast: { name: string; character: string; photo: string | null }[];
   trailerKey: string | null;
   tagline: string;
@@ -414,13 +415,14 @@ export async function fetchDetails(movieId: string): Promise<MovieDetails> {
       })),
       trailerKey,
       tagline: d.tagline ?? "",
+      overview: d.overview ?? "",
       genres: (d.genres ?? []).map((g: any) => g.name),
       providers: (d["watch/providers"]?.results?.IE?.flatrate ?? []).slice(0, 5).map((p: any) => ({
         name: p.provider_name, logo: img(p.logo_path, "w92"),
       })),
     };
   } catch {
-    return { cast: [], trailerKey: null, tagline: "", genres: [], providers: [] };
+    return { overview: "", cast: [], trailerKey: null, tagline: "", genres: [], providers: [] };
   }
 }
 

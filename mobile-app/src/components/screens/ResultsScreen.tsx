@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, Image, Pressable, ScrollView, Animated, Easing, StyleSheet } from "react-native";
-import CardBack from "../CardBack";
+import { View, Text, Image, Pressable, ScrollView, Animated, StyleSheet } from "react-native";
+import DetailsSheet from "../DetailsSheet";
 import { LinearGradient } from "expo-linear-gradient";
 import { Dices } from "lucide-react-native";
 import { Button, Screen, Stripes } from "../ui-kit";
@@ -44,20 +44,7 @@ export default function ResultsScreen({
   onSpin: (movieId: string, spin: number) => void;
 }) {
   const [open, setOpen] = useState<Movie | null>(null); // movie whose details pop-up is showing
-  const sheetIn = useRef(new Animated.Value(0)).current; // 0 = hidden, 1 = fully open
 
-  // pop-up eases in (fade + slide up) and eases out before it disappears
-  const openDetails = (m: Movie) => {
-    sheetIn.stopAnimation();
-    sheetIn.setValue(0);
-    setOpen(m);
-    Animated.timing(sheetIn, { toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-  };
-  const closeDetails = () => {
-    Animated.timing(sheetIn, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(
-      ({ finished }) => finished && setOpen(null),
-    );
-  };
   const solo = groupSize === 1;
   const canSpin = matches.length >= 2;
   const count = `${matches.length} ${matches.length === 1 ? "movie" : "movies"}`;
@@ -183,7 +170,7 @@ export default function ResultsScreen({
           ) : heroMovie ? (
             <View style={{ gap: 10 }}>
               <Animated.View style={[s.heroWrap, landed && s.heroGlow, { transform: [{ scale: pop }] }]}>
-                <Pressable style={s.hero} disabled={spinning} onPress={() => heroMovie && openDetails(heroMovie)}>
+                <Pressable style={s.hero} disabled={spinning} onPress={() => heroMovie && setOpen(heroMovie)}>
                   <Stripes />
                   {(heroMovie.backdrop || heroMovie.poster) && (
                     <Image
@@ -254,7 +241,7 @@ export default function ResultsScreen({
             <View style={{ gap: 10 }}>
               {landed && <Text style={s.listLabel}>Your other matches</Text>}
               {listed.map((m, i) => (
-                <Pressable key={m.id} style={s.row} onPress={() => openDetails(m)}>
+                <Pressable key={m.id} style={s.row} onPress={() => setOpen(m)}>
                   <View style={s.thumb}>
                     <Stripes a={i % 2 ? "#203028" : "#20282E"} b={C.stripeB} band={6} />
                     {m.poster && <Image source={{ uri: m.poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
@@ -297,24 +284,7 @@ export default function ResultsScreen({
       </Pressable>
 
       {/* details pop-up: same info as the back of the swipe card, without leaving the app */}
-      {open && (
-        <Animated.View style={[s.overlay, { opacity: sheetIn }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeDetails} accessibilityLabel="Close" />
-          <Animated.View
-            style={[
-              s.sheet,
-              {
-                transform: [
-                  { translateY: sheetIn.interpolate({ inputRange: [0, 1], outputRange: [36, 0] }) },
-                  { scale: sheetIn.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-                ],
-              },
-            ]}
-          >
-            <CardBack movie={open} onFlipBack={closeDetails} closeIcon />
-          </Animated.View>
-        </Animated.View>
-      )}
+      <DetailsSheet movie={open} onClose={() => setOpen(null)} />
     </Screen>
   );
 }
@@ -406,12 +376,4 @@ const s = StyleSheet.create({
   rowTitle: { fontFamily: F.textBold, fontSize: 16, color: C.cream },
   rowMeta: { fontFamily: F.text, fontSize: 13, color: C.muted },
   buttons: { flexDirection: "row", gap: 10 },
-  overlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(13,17,13,0.82)",
-    justifyContent: "center",
-    padding: 20,
-    zIndex: 50,
-  },
-  sheet: { height: "82%", borderRadius: 28, overflow: "hidden", backgroundColor: C.surface },
 });

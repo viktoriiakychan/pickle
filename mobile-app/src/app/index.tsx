@@ -129,6 +129,9 @@ export default function Index() {
       id: thisNight,
       at: Date.now(),
       genre: room.genre?.title ?? "",
+      genres: [...new Set(playerIds(room).flatMap((id) => moodOf(room, id).genres))].map(
+        (g) => GENRES.find((x) => x.id === g)?.title ?? ""
+      ).filter(Boolean),
       with: playerIds(room).filter((id) => id !== myId).map((id) => room.players[id].name),
       solo: !!room.solo,
       movies: matches,
@@ -485,7 +488,7 @@ export default function Index() {
     return (
       <SavedScreen
         onBack={() => setMode("landing")}
-        onOpen={(m) => Linking.openURL(whereToWatchUrl(m.id))}
+        onWatched={(id, on) => (on ? markSeen(myId, id) : unmarkSeen(myId, id)).catch(() => {})}
       />
     );
   }

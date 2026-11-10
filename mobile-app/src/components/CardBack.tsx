@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet, Platform } from "react-native";
+import { View, Text, Image, Pressable, ScrollView, Linking, Platform, StyleSheet } from "react-native";
 import { RotateCcw, X } from "lucide-react-native";
 import { C, F } from "./theme";
 import { Button } from "./ui-kit";
-import { fetchDetails, metaLine, providerUrl, whereToWatchUrl, Movie, MovieDetails } from "../lib/tmdb";
 import TrailerPreview from "./TrailerPreview";
+import { fetchDetails, metaLine, providerUrl, whereToWatchUrl, Movie, MovieDetails } from "../lib/tmdb";
 
 // Back of the swipe card: everything you need to decide, without leaving the deck.
 export default function CardBack({
@@ -16,9 +16,9 @@ export default function CardBack({
 }: {
   movie: Movie;
   onFlipBack: () => void;
-  closeIcon?: boolean;
-  active?: boolean;
-   warm?: boolean;
+  closeIcon?: boolean; // true = shows ✕ (used as a pop-up on the results screen)
+  active?: boolean; // false while this side isn't showing, so the trailer doesn't play hidden
+  warm?: boolean; // true = start loading the trailer early, paused
 }) {
   const [details, setDetails] = useState<MovieDetails | null>(null);
 
@@ -74,8 +74,12 @@ export default function CardBack({
           </View>
         )}
 
-        {!!movie.overview && <Text style={s.overview}>{movie.overview}</Text>}
+        {/* saved movies from before didn't store the overview, so fall back to the fetched one */}
+        {!!(movie.overview || details?.overview) && (
+          <Text style={s.overview}>{movie.overview || details?.overview}</Text>
+        )}
 
+        {/* on web the preview has its own YouTube link; the phone app still uses this button */}
         {details?.trailerKey && Platform.OS !== "web" && (
           <Button
             label="Full trailer on YouTube"

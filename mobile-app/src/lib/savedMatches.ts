@@ -1,36 +1,47 @@
 import type { Movie } from "./tmdb";
 
-export type SavedMovie = Pick<Movie, "id" | "title" | "year" | "rating" | "poster">;
+// What we keep per movie. overview/backdrop/runtime were added later, so older saves won't have them.
+export type SavedMovie = Pick<Movie, "id" | "title" | "year" | "rating" | "poster"> &
+  Partial<Pick<Movie, "overview" | "backdrop" | "runtime">>;
+
 export type Night = {
   id: string;
   at: number;           // when
-  genre: string;
+  genre: string;        // the deck's name, e.g. "Crime + 3 more"
+  genres?: string[];    // every genre that went into it (newer saves only)
   with: string[];       // other people's names (empty if solo)
   solo: boolean;
   movies: SavedMovie[]; // best match first
 };
 
 const KEY = "pickle.saved";
+const WATCHED_KEY = "pickle.watched";
 const KEEP = 50; // oldest nights get dropped after 50
 
-let memory: Night[] = []; // fallback on native (no localStorage there yet)
+const memory: Record<string, string> = {}; // fallback on native (no localStorage there yet)
 
-function load(): Night[] {
+function read<T>(key: string, fallback: T): T {
   try {
-    if (typeof localStorage !== "undefined") return JSON.parse(localStorage.getItem(KEY) ?? "[]");
-  } catch {}
-  return memory;
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(key) : memory[key];
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-function store(nights: Night[]) {
+function write(key: string, value: unknown) {
+  const raw = JSON.stringify(value);
   try {
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(KEY, JSON.stringify(nights));
+      localStorage.setItem(key, raw);
       return;
     }
   } catch {}
-  memory = nights;
+  memory[key] = raw;
 }
+
+const load = () => read<Night[]>(KEY, []);
+const store = (nights: Night[]) => write(KEY, nights);
 
 /** Same room + same deck = same night, so saving twice doesn't duplicate it. */
 export const nightId = (code: string, deck: Movie[]) => `${code}-${deck[0]?.id ?? "x"}`;
@@ -38,7 +49,9 @@ export const nightId = (code: string, deck: Movie[]) => `${code}-${deck[0]?.id ?
 export function saveNight(night: Omit<Night, "movies"> & { movies: Movie[] }) {
   const entry: Night = {
     ...night,
-    movies: night.movies.map(({ id, title, year, rating, poster }) => ({ id, title, year, rating, poster })),
+    movies: night.movies.map(({ id, title, year, rating, poster, overview, backdrop, runtime }) => ({
+      id, title, year, rating, poster, overview, backdrop, runtime,
+    })),
   };
   const all = load();
   const old = all.find((n) => n.id === entry.id);
@@ -50,3 +63,18 @@ export function saveNight(night: Omit<Night, "movies"> & { movies: Movie[] }) {
 export const getNights = (): Night[] => load();
 
 export const deleteNight = (id: string) => store(load().filter((n) => n.id !== id));
+
+/** Undo a delete: put the night back in its place (nights are kept newest first). */
+export const restoreNight = (night: Night) =>
+  store([...load().filter((n) => n.id !== night.id), night].sort((a, b) => b.at - a.at).slice(0, KEEP));
+
+/* ── watched ───────────────────────────────────────────────────────────
+   One list for the whole app: if you've watched a movie, it's watched in every night it shows up in. */
+export const getWatched = () => new Set(read<string[]>(WATCHED_KEY, []));
+
+export function setWatched(id: string, on: boolean) {
+  const all = getWatched();
+  if (on) all.add(id);
+  else all.delete(id);
+  write(WATCHED_KEY, [...all]);
+}
