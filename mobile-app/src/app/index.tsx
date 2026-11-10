@@ -45,6 +45,7 @@ import {
   everyoneFinished,
   addToDeck,
   groupMatches,
+  pickTonight,
   EMPTY_MOOD,
 } from "../lib/room";
 
@@ -259,16 +260,23 @@ export default function Index() {
     setDealing(false);
   };
 
+  // "Seen it" adds a replacement card. Saving my progress waits until that card is in the deck,
+  // otherwise for a moment it looks like everyone's finished and the results screen flashes up.
+  const pendingExtra = useRef<Promise<void>>(Promise.resolve());
+  const afterExtra = (save: () => Promise<unknown>) => {
+    pendingExtra.current.then(() => save().catch(() => {}));
+  };
+
   const handleSwipe = (liked: boolean) => {
     const movie = room?.deck?.[myIndex];
     if (!code || !movie) return;
     const next = myIndex + 1;
     setMyIndex(next);
-    recordSwipe(code, myId, movie.id, liked, next).catch(() => {});
+    afterExtra(() => recordSwipe(code, myId, movie.id, liked, next));
     if (liked) markLiked(myId, movie.id).catch(() => {});
   };
 
-  const handleSeen = async () => {
+  const addExtraCard = async () => {
     const movie = room?.deck?.[myIndex];
     if (!code || !room?.genre || !room.deck || !movie) return;
 
@@ -283,7 +291,14 @@ export default function Index() {
 
     const plan = room.plan ?? { with: room.genre.id, without: "" }; // older rooms had one genre
     const extra = await fetchReplacement(plan, exclude, level).catch(() => null);
-    if (extra) addToDeck(code, extra).catch(() => {});
+    // addedBy: the card shows up green, and everyone else gets a "+1 card" note
+    const by = { id: myId, name: room.players[myId]?.name ?? "Someone" };
+    if (extra) addToDeck(code, { ...extra, addedBy: by }).catch(() => {});
+  };
+
+  const handleSeen = () => {
+    const adding = addExtraCard().catch(() => {});
+    pendingExtra.current = Promise.all([pendingExtra.current, adding]).then(() => {});
   };
 
   const handleUndo = () => {
@@ -299,7 +314,7 @@ export default function Index() {
 
     const back = myIndex - 1;
     setMyIndex(back);
-    undoSwipe(code, myId, prev.id, back).catch(() => {});
+    afterExtra(() => undoSwipe(code, myId, prev.id, back));
   };
 
   const openWhereToWatch = (m: Movie) => Linking.openURL(whereToWatchUrl(m.id));
@@ -407,6 +422,8 @@ export default function Index() {
           }
           onWhereToWatch={openWhereToWatch}
           onLeave={handleLeave}
+          tonight={room.tonight ?? null}
+          onSpin={(movieId, spin) => pickTonight(room.code, movieId, spin).catch(() => {})}
         />
       );
     }
@@ -421,6 +438,7 @@ export default function Index() {
           onBack={() => setConfirmingLeave(true)}
           onSwipe={handleSwipe}
           myName={name(myId)}
+          myId={myId}
           onUndo={handleUndo}
           onSeen={handleSeen}
           tagFor={(m) => tagLabel(m)}

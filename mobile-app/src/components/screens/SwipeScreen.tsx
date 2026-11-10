@@ -17,7 +17,7 @@ import { Avatar, NavBar, Screen, Stripes, MovieMeta } from "../ui-kit";
 import PickleIcon from "../PickleIcon";
 import { C, F, MAX_WIDTH } from "../theme";
 import { Movie } from "../../lib/tmdb";
-import { ArrowLeft, ArrowRight, ChevronDown, EyeOff, Info, Undo2 } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, ChevronDown, EyeOff, Info, Plus, Undo2 } from "lucide-react-native";
 import ProgressAvatar from "../ProgressAvatar";
 import CardBack from "../CardBack";
 import { bumpCount, getCount, hasFlag, setFlag } from "../../lib/identity";
@@ -28,6 +28,8 @@ const buzz = () => { try { (globalThis as any).navigator?.vibrate?.(8); } catch 
 const HINT_KEY = "swipeHint";
 const HINT_MAX = 2; // swipe demo plays on the first 2 swipe screens, then never again
 const UNDO_FLAG = "undoTip"; // "Changed your mind?" bubble, shown once ever
+const FLIP_FLAG = "flipTip"; // "Tap the card for details" step, until you've seen it play once
+const NOTE_MS = 3800; // how long the "+1 card" note stays up
 
 /** ["Dill"] → "Dill", ["Dill","Brine","Spear"] → "Dill, Brine and Spear" */
 const joinNames = (ns: string[]) =>
@@ -46,7 +48,8 @@ export default function SwipeScreen({
   onSeen,
   tagFor,
   genreDetails,
-  myName
+  myName,
+  myId,
 }: {
   genreTitle: string;
   deck: Movie[];
@@ -59,6 +62,7 @@ export default function SwipeScreen({
   tagFor?: (m: Movie) => string | null; // "Brine's pick", "Romance + Horror blend"…
   genreDetails?: { who: string; what: string; no?: boolean }[]; // tap the top pill to see everyone's picks
   myName: string;
+  myId: string;
 }) {
   const total = deck.length;
   const [showGenres, setShowGenres] = useState(false);
@@ -70,22 +74,30 @@ export default function SwipeScreen({
   const busy = useRef(false);
   const dragged = useRef(false); // so letting go of a drag doesn't count as a tap
   const exitX = Math.min(Dimensions.get("window").width, MAX_WIDTH) * 1.5;
+  const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
 
   /* -- first-time demo: wiggle the card right, then left ------------- */
-  const [showHint, setShowHint] = useState(() => getCount(HINT_KEY) < HINT_MAX);
+  // swipe steps: first 2 visits. Flip step: until it has played once (so people who already
+  // used up the swipe demo still get shown the flip, just on its own)
+  const swipeDemo = useRef(getCount(HINT_KEY) < HINT_MAX).current;
+  const flipDemo = useRef(!hasFlag(FLIP_FLAG)).current;
+  const [showHint, setShowHint] = useState(swipeDemo || flipDemo);
   const hintCounted = useRef(false); // so one showing only counts once
   const hintAnim = useRef<Animated.CompositeAnimation | null>(null);
 
-  const stopHint = () => {
+  // learnedFlip: the flip step played to the end, or they tapped a card themselves
+  const stopHint = (learnedFlip = false) => {
     if (!showHint) return;
     hintAnim.current?.stop();
     hintAnim.current = null;
     if (!hintCounted.current) {
       hintCounted.current = true;
-      bumpCount(HINT_KEY);
+      if (swipeDemo) bumpCount(HINT_KEY);
     }
+    if (learnedFlip) setFlag(FLIP_FLAG);
     setShowHint(false);
     if (!busy.current) pan.setValue({ x: 0, y: 0 }); // snap the card back to the middle
+    flip.setValue(0); // and un-peek it
   };
   const stopHintRef = useRef(stopHint);
   stopHintRef.current = stopHint;
@@ -95,13 +107,24 @@ export default function SwipeScreen({
     const move = (x: number, ms: number) =>
       Animated.timing(pan.x, { toValue: x, duration: ms, easing: Easing.inOut(Easing.cubic), useNativeDriver: false });
 
-    hintAnim.current = Animated.sequence([
-      Animated.delay(400),
+    const turn = (to: number, ms: number) =>
+      Animated.timing(flip, { toValue: to, duration: ms, easing: Easing.inOut(Easing.cubic), useNativeDriver: false });
+
+    const swipeSteps = [
       move(80, 450), Animated.delay(500), move(0, 300),   // right: "Pick" pill fades in with the card
       Animated.delay(150),
       move(-80, 450), Animated.delay(500), move(0, 300),  // left: "Pass" pill
+    ];
+    // the card starts to turn over (a peek, not a full flip), "Tap the card" pill fades in with it
+    const flipSteps = [turn(0.22, 420), Animated.delay(900), turn(0, 320)];
+
+    hintAnim.current = Animated.sequence([
+      Animated.delay(swipeDemo ? 400 : 1200),
+      ...(swipeDemo ? swipeSteps : []),
+      ...(swipeDemo && flipDemo ? [Animated.delay(250)] : []),
+      ...(flipDemo ? flipSteps : []),
     ]);
-    hintAnim.current.start(({ finished }) => finished && stopHint());
+    hintAnim.current.start(({ finished }) => finished && stopHint(flipDemo));
     return () => hintAnim.current?.stop();
   }, []);
 
@@ -121,8 +144,39 @@ export default function SwipeScreen({
     return () => a.stop();
   }, [index]);
 
+  /* -- "+1 card" note: someone hit "Seen it" and a replacement was added ---- */
+  const [note, setNote] = useState<string | null>(null);
+  const noteIn = useRef(new Animated.Value(0)).current;
+  const noteAnim = useRef<Animated.CompositeAnimation | null>(null);
+  const knownExtras = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const extras = deck.filter((m) => m.addedBy);
+    if (!knownExtras.current) {
+      knownExtras.current = new Set(extras.map((m) => m.id)); // already there when I arrived: no note
+      return;
+    }
+    const fresh = extras.filter((m) => !knownExtras.current!.has(m.id));
+    fresh.forEach((m) => knownExtras.current!.add(m.id));
+    const fromOthers = fresh.filter((m) => m.addedBy!.id !== myId); // I know why I added mine
+    if (!fromOthers.length) return;
+
+    const who = [...new Set(fromOthers.map((m) => m.addedBy!.name))];
+    setNote(
+      fromOthers.length === 1
+        ? `+1 card: ${who[0]} had already seen one`
+        : `+${fromOthers.length} cards: ${joinNames(who)} had seen some`
+    );
+    noteAnim.current?.stop();
+    noteAnim.current = Animated.sequence([
+      Animated.timing(noteIn, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.delay(NOTE_MS),
+      Animated.timing(noteIn, { toValue: 0, duration: 300, useNativeDriver: false }),
+    ]);
+    noteAnim.current.start(({ finished }) => finished && setNote(null));
+  }, [deck.length]);
+  useEffect(() => () => noteAnim.current?.stop(), []);
+
   /* -- card flip ------------------------------------------------------- */
-  const flip = useRef(new Animated.Value(0)).current; // 0 = poster side, 1 = details side
   const [flipped, setFlipped] = useState(false);
 
   // looked at this poster for 1.5s → start loading its trailer in the background (paused)
@@ -141,7 +195,7 @@ export default function SwipeScreen({
     : undefined;
 
   const toggleFlip = () => {
-    stopHint();
+    stopHint(true); // they've found it, no need to show them again
     const to = flipped ? 0 : 1;
     setFlipped(!flipped);
     Animated.spring(flip, { toValue: to, friction: 8, tension: 60, useNativeDriver: false }).start();
@@ -237,6 +291,7 @@ export default function SwipeScreen({
   const hintLeft = pan.x.interpolate({ inputRange: [-60, 0], outputRange: [1, 0], extrapolate: "clamp" });
   // pills drift a little the same way as the card (no tilt), so they feel attached to the motion
   const hintSlide = pan.x.interpolate({ inputRange: [-80, 0, 80], outputRange: [-12, 0, 12], extrapolate: "clamp" });
+  const hintTap = flip.interpolate({ inputRange: [0, 0.15], outputRange: [0, 1], extrapolate: "clamp" });
 
   // next card sits underneath and grows into place as you drag the top one away
   const away = pan.x.interpolate({ inputRange: [-150, 0, 150], outputRange: [1, 0, 1], extrapolate: "clamp" });
@@ -257,6 +312,7 @@ export default function SwipeScreen({
 
   const renderCard = (m: Movie, depth: number) => {
     const top = depth === 0;
+    const extra = !!m.addedBy; // added because someone had seen a card: green border + label
     return (
       <Animated.View
         key={m.id}
@@ -280,6 +336,7 @@ export default function SwipeScreen({
           pointerEvents={top && !flipped ? "auto" : "none"}
           style={[
             s.face,
+            extra && s.extraFace,
             top
               ? { opacity: frontOpacity, transform: [{ perspective: 1000 }, { rotateY: frontRotate }] }
               : { opacity: 1, transform: [{ perspective: 1000 }, { rotateY: "0deg" }] },
@@ -307,9 +364,19 @@ export default function SwipeScreen({
                 locations={[0.82, 1]}
                 style={StyleSheet.absoluteFill}
               />
-              {!!tagFor?.(m) && (
-                <View style={s.tag} pointerEvents="none">
-                  <Text style={s.tagText}>{tagFor(m)}</Text>
+              {(extra || !!tagFor?.(m)) && (
+                <View style={s.tags} pointerEvents="none">
+                  {extra && (
+                    <View style={s.extraTag}>
+                      <Plus size={12} color={C.bg} strokeWidth={3} />
+                      <Text style={s.extraTagText}>Extra card</Text>
+                    </View>
+                  )}
+                  {!!tagFor?.(m) && (
+                    <View style={s.tag}>
+                      <Text style={s.tagText}>{tagFor(m)}</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -343,7 +410,11 @@ export default function SwipeScreen({
         {top && (
           <Animated.View
             pointerEvents={flipped ? "auto" : "none"}
-            style={[s.face, { opacity: backOpacity, transform: [{ perspective: 1000 }, { rotateY: backRotate }] }]}
+            style={[
+              s.face,
+              extra && s.extraFace,
+              { opacity: backOpacity, transform: [{ perspective: 1000 }, { rotateY: backRotate }] },
+            ]}
           >
             <Pressable
               style={StyleSheet.absoluteFill}
@@ -477,7 +548,31 @@ export default function SwipeScreen({
                 <ArrowLeft size={16} color={C.bg} strokeWidth={2.6} />
                 <Text style={s.hintText}>Swipe left to Pass</Text>
               </Animated.View>
+              <Animated.View pointerEvents="none" style={[s.hint, { zIndex: 20, opacity: hintTap }]}>
+                <Info size={16} color={C.bg} strokeWidth={2.6} />
+                <Text style={s.hintText}>Tap the card for details</Text>
+              </Animated.View>
             </>
+          )}
+
+          {/* "+1 card: Brine had already seen one" */}
+          {note && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                s.noteWrap,
+                {
+                  opacity: noteIn,
+                  transform: [{ translateY: noteIn.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+                },
+              ]}
+            >
+              <View style={s.note}>
+                <Text style={s.noteText} numberOfLines={2}>
+                  {note}
+                </Text>
+              </View>
+            </Animated.View>
           )}
         </View>
       </View>
@@ -580,10 +675,29 @@ const s = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: C.pillGreen,
   },
+  tags: { position: "absolute", left: 14, right: 14, bottom: 12, flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  extraTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: C.accent,
+  },
+  extraTagText: { fontFamily: F.textBold, fontSize: 12, color: C.bg },
+  extraFace: { borderWidth: 2.5, borderColor: C.accent },
+  noteWrap: { position: "absolute", top: 12, left: 16, right: 16, zIndex: 25, alignItems: "center" },
+  note: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "rgba(31,42,20,0.96)",
+    borderWidth: 1.5,
+    borderColor: C.accent,
+  },
+  noteText: { fontFamily: F.textBold, fontSize: 13, color: C.accent, textAlign: "center" },
   tag: {
-    position: "absolute",
-    left: 14,
-    bottom: 12,
     height: 26,
     paddingHorizontal: 10,
     borderRadius: 999,

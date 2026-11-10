@@ -11,6 +11,8 @@ import { C, F } from "./theme";
 const SKIP_INTRO = 10; // seconds: skips most studio-logo intros…
 const SHORT_VIDEO = 30; // …but videos this short (teasers) start from 0:00
 const FALLBACK_MS = 3000; // if YouTube never tells us it's playing, show the video anyway
+// Trailers YouTube won't let us embed are filtered out before we get here (fetchDetails in tmdb.ts),
+// so "Loading trailer" only ever shows for one that should play.
 
 // Android Chrome treats a sideways drag as its own gesture (scroll / back) and cancels our touch,
 // so the card underneath thinks it's a swipe. "touch-action: none" tells the browser to keep out.
@@ -161,7 +163,10 @@ export default function TrailerPreview({
       } catch {
         return;
       }
-      if (data?.event === "onError") setBroken(true);
+      if (data?.event === "onError") {
+        setBroken(true); // e.g. not allowed in this country: we only find out once the player tries
+        return;
+      }
       // YouTube player states: 1 = playing, 2 = paused, 3 = buffering, 0 = ended, -1 = not started
       const state = typeof data?.info === "number" ? data.info : data?.info?.playerState;
       if (typeof state === "number") {
@@ -179,7 +184,47 @@ export default function TrailerPreview({
   }, [warm, active, videoKey]);
 
   // not looked at long enough and not flipped → load nothing
-  if (Platform.OS !== "web" || broken || !(warm || active)) return null;
+  if (Platform.OS !== "web" || !(warm || active)) return null;
+
+  // On web, buttons fire on the browser's "click", which bubbles up to the card's "tap to flip back".
+  // Stopping it means taps on the video, the line or the link never flip the card.
+  const keepTap = (Platform.OS === "web" ? { onClick: (e: any) => e.stopPropagation() } : {}) as object;
+
+  const youtubeLink = (
+    <Pressable
+      onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${videoKey}`)}
+      hitSlop={8}
+      style={({ pressed }) => [s.ytLink, pressed && { opacity: 0.6 }]}
+    >
+      <Text style={s.ytText}>Watch on YouTube</Text>
+      <ExternalLink size={12} color={C.muted} strokeWidth={2.4} />
+    </Pressable>
+  );
+
+  // Rare: the trailer passed our check but YouTube still refused (usually "not available in your
+  // country"). Say so plainly instead of a spinner that never ends. Tapping the picture still flips back.
+  if (broken) {
+    return (
+      <View style={{ gap: 8 }}>
+        <View style={s.box}>
+          {backdrop ? (
+            <ExpoImage source={{ uri: backdrop }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: C.surface2 }]} />
+          )}
+          <LinearGradient colors={["rgba(13,17,13,0.15)", "rgba(13,17,13,0.65)"]} style={StyleSheet.absoluteFill} />
+          <View style={s.coverCentre}>
+            <View style={s.loadingPill}>
+              <Text style={s.loadingText}>Trailer can't play here</Text>
+            </View>
+          </View>
+        </View>
+        <View style={[s.below, { justifyContent: "flex-end" }]} {...keepTap}>
+          {youtubeLink}
+        </View>
+      </View>
+    );
+  }
 
   const togglePlay = () => {
     if (playing) {
@@ -216,13 +261,7 @@ export default function TrailerPreview({
     `&loop=1&playlist=${videoKey}&enablejsapi=1`;
 
   return (
-    <View
-      style={{ gap: 8 }}
-      // On web, buttons fire on the browser's "click", which bubbles up to the card's
-      // "tap to flip back". Stopping it here means taps on the video, the line or the time
-      // never flip the card, but taps anywhere else on the card still do.
-      {...(Platform.OS === "web" ? ({ onClick: (e: any) => e.stopPropagation() } as any) : {})}
-    >
+    <View style={{ gap: 8 }} {...keepTap}>
       {/* tap the video = pause / play */}
       <Pressable onPress={togglePlay} style={s.box} accessibilityLabel={playing ? "Pause trailer" : "Play trailer"}>
         <iframe
@@ -323,14 +362,7 @@ export default function TrailerPreview({
         <Animated.Text style={[s.timeText, { opacity: barIn }]}>
           {duration > 0 ? `${fmt(dragTime ?? Math.max(time, startAt))} / ${fmt(duration)}` : " "}
         </Animated.Text>
-        <Pressable
-          onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${videoKey}`)}
-          hitSlop={8}
-          style={({ pressed }) => [s.ytLink, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={s.ytText}>Watch on YouTube</Text>
-          <ExternalLink size={12} color={C.muted} strokeWidth={2.4} />
-        </Pressable>
+        {youtubeLink}
       </View>
     </View>
   );

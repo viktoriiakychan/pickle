@@ -43,6 +43,7 @@ export type Movie = {
   backdrop: string | null;
   tagline: string;
   tag?: MovieTag;
+  addedBy?: { id: string; name: string }; // extra card: added mid-round because this person had seen one
 };
 
 export type MovieDetails = {
@@ -372,20 +373,46 @@ export async function fetchReplacement(
   return movie;
 }
 
+/**
+ * Can this YouTube video play inside our app? Asks YouTube's public oEmbed (free, no key, works from a browser).
+ * true = yes. false = owner turned off embedding (401), or it's private / removed (404).
+ * null = couldn't ask (offline, blocked…): we'll just try it and see.
+ */
+async function canEmbed(key: string): Promise<boolean | null> {
+  try {
+    const watch = encodeURIComponent(`https://www.youtube.com/watch?v=${key}`);
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${watch}`);
+    return res.ok;
+  } catch {
+    return null;
+  }
+}
+
+/** First trailer that will definitely play; if we couldn't check, the first one we might be able to. */
+async function firstPlayable(keys: string[]): Promise<string | null> {
+  if (!keys.length) return null;
+  const ok = await Promise.all(keys.map(canEmbed)); // checked side by side, not one after another
+  return keys[ok.indexOf(true)] ?? keys[ok.indexOf(null)] ?? null;
+}
+
 export async function fetchDetails(movieId: string): Promise<MovieDetails> {
   try {
     const res = await fetch(
       `${BASE}/movie/${movieId}?api_key=${API_KEY}&append_to_response=credits,videos,watch/providers`
     );
     const d = await res.json();
-    const trailer = (d.videos?.results ?? []).find(
-      (v: any) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser")
-    );
+    // official trailers first, then teasers. Try up to 3 and keep the first one YouTube lets us play.
+    const candidates: string[] = (d.videos?.results ?? [])
+      .filter((v: any) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser"))
+      .sort((a: any, b: any) => (a.type === "Trailer" ? 0 : 2) + (a.official ? 0 : 1) - ((b.type === "Trailer" ? 0 : 2) + (b.official ? 0 : 1)))
+      .slice(0, 3)
+      .map((v: any) => v.key);
+    const trailerKey = await firstPlayable(candidates);
     return {
       cast: (d.credits?.cast ?? []).slice(0, 8).map((c: any) => ({
         name: c.name, character: c.character, photo: img(c.profile_path, "w185"),
       })),
-      trailerKey: trailer?.key ?? null,
+      trailerKey,
       tagline: d.tagline ?? "",
       genres: (d.genres ?? []).map((g: any) => g.name),
       providers: (d["watch/providers"]?.results?.IE?.flatrate ?? []).slice(0, 5).map((p: any) => ({

@@ -1,20 +1,3 @@
-// Shared rooms in Cloud Firestore: one document per room at rooms/{CODE}.
-//
-// rooms/DILL42 = {
-//   code, hostId, createdAt,
-//   players:  { [playerId]: { name, joinedAt } },
-//   stage:    "lobby" | "genre" | "swiping",
-//   moods:    { [playerId]: { genres, any, no, ready } } ← everyone's genre picks, live
-//   genre:    { id, title } | null     ← the deck's name once it's built, e.g. "Comedy + Romance"
-//   plan:     { with, without } | null ← the TMDB query the deck came from (for "Seen it")
-//   deck:     Movie[] | null           ← the same 20 movies for both phones
-//   progress: { [playerId]: number }   ← how many cards each person has swiped
-//   picks:    { [playerId]: string[] } ← movie ids each person said yes to
-// }
-//
-// Results aren't stored: once everyone's progress reaches the end of the
-// deck, the app shows the movies that are in everyone's picks.
-
 import {
   doc,
   getDoc,
@@ -31,6 +14,8 @@ import {
 import { db } from "../firebaseConfig";
 import type { Genre, Movie, Query } from "./tmdb";
 
+// Rooms delete themselves 24h after the last round started (Firestore TTL policy on "expireAt").
+// Must be a real Timestamp: TTL ignores numbers and strings.
 const ROOM_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const expiresAt = () => Timestamp.fromMillis(Date.now() + ROOM_LIFETIME_MS);
 
@@ -43,6 +28,9 @@ export type Mood = { genres: string[]; any: boolean; no: string | null; ready: b
 export const MAX_GENRES = 2;
 export const EMPTY_MOOD: Mood = { genres: [], any: false, no: null, ready: false };
 
+/** "Pick for us" result: which movie won, which spin it was (1 or 2), and when (so phones can sync the animation). */
+export type Tonight = { movieId: string; spin: number; at: number };
+
 export type Room = {
   code: string;
   hostId: string;
@@ -51,6 +39,7 @@ export type Room = {
   genre: Genre | null;
   plan?: Query | null;
   moods?: Record<string, Mood>;
+  tonight?: Tonight | null;
   deck: Movie[] | null;
   progress: Record<string, number>;
   picks: Record<string, string[]>;
@@ -84,15 +73,14 @@ export async function createRoom(myId: string, solo = false): Promise<string> {
     const ref = roomRef(code);
     const existing = await getDoc(ref);
     const createdAt = existing.data()?.createdAt?.toMillis?.() ?? 0;
-    createdAt: serverTimestamp(),
-    expireAt: expiresAt(),
     const isFresh = Date.now() - createdAt < 24 * 60 * 60 * 1000; // under a day old = still in use
     if (existing.exists() && isFresh) continue;
-    
-    await setDoc(ref, { 
+
+    await setDoc(ref, {
       code,
       hostId: myId,
       createdAt: serverTimestamp(),
+      expireAt: expiresAt(), // auto-deleted 24h later (Firestore TTL policy)
       players: { [myId]: { name: pick(NAMES), joinedAt: Date.now() } },
       stage: solo ? "genre" : "lobby", // solo goes straight to picking a genre
       solo: solo,                      // true = one-person game, nobody can join
@@ -141,7 +129,7 @@ export async function leaveRoom(code: string, myId: string): Promise<void> {
           [`picks.${myId}`]: deleteField(),
           [`moods.${myId}`]: deleteField(),
         };
-    if (room.hostId === myId && others.length) update.hostId = others[0]; // hand over host // hand over host
+    if (room.hostId === myId && others.length) update.hostId = others[0]; // hand over host
     tx.update(ref, update);
   });
 }
@@ -170,10 +158,16 @@ export const startSwiping = (code: string, deck: Movie[], label: string, plan: Q
     plan,
     progress: {},
     picks: {},
+    tonight: null,
+    expireAt: expiresAt(), // a new round pushes the deletion back another 24h
   });
 
+/** Anyone: "Pick for us". Every phone in the room plays the spin and lands on this movie. */
+export const pickTonight = (code: string, movieId: string, spin: number) =>
+  updateDoc(roomRef(code), { tonight: { movieId, spin, at: Date.now() } });
+
 export function newRound(code: string, ids: string[], gone: string[] = []) {
-  const update: Record<string, any> = { stage: "genre", genre: null, plan: null, deck: null, progress: {}, picks: {} };
+  const update: Record<string, any> = { stage: "genre", genre: null, plan: null, deck: null, progress: {}, picks: {}, tonight: null };
   ids.forEach((id) => (update[`moods.${id}.ready`] = false));
   // people who left after the last round aren't part of the new one
   gone.forEach((id) => {
@@ -196,6 +190,7 @@ export function undoSwipe(code: string, myId: string, movieId: string, newIndex:
     [`picks.${myId}`]: arrayRemove(movieId),
   });
 }
+
 
 /* ── derived state ─────────────────────────────────────────────────── */
 export function everyoneFinished(room: Room): boolean {
