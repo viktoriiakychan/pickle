@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { View, Share, Linking, StyleSheet } from "react-native";
+import { View, Text, Share, Linking, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useFonts } from "expo-font";
 import {
@@ -28,7 +28,7 @@ import { buildDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie, GENRES }
 import { markSeen, unmarkSeen, 
     getTaste, saveFavs, saveLevel, Taste, roomTaste,
     markTasteDone, Level, markLiked, unmarkLiked } from "../lib/seen";
-import { getMyId, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
+import { getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
   createRoom,
@@ -50,11 +50,29 @@ import {
 } from "../lib/room";
 
 import SavedScreen from "../components/screens/SavedScreen";
+import { useUserId } from "../lib/auth";
 import { nightId, saveNight } from "../lib/savedMatches";
 
 const NO_TASTE = () => ({ seen: new Set<string>(), favs: [] as string[], level: "casual" as Level });
 
+// Sign in first (invisible, takes a moment), then run the app with that id
 export default function Index() {
+  const { uid, failed } = useUserId();
+  if (!uid) {
+    return (
+      <View style={s.splash}>
+        {failed ? (
+          <Text style={s.splashError}>Couldn't connect. Check your internet and refresh.</Text>
+        ) : (
+          <PickleLoader size={56} />
+        )}
+      </View>
+    );
+  }
+  return <App myId={uid} />;
+}
+
+function App({ myId }: { myId: string }) {
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
     BricolageGrotesque_500Medium,
@@ -67,7 +85,6 @@ export default function Index() {
     "BricolageDisplay-ExtraBold": require("../../assets/fonts/BricolageDisplay-ExtraBold.ttf"),
   });
 
-  const myId = useMemo(getMyId, []);
   const linkCode = useMemo(getRoomFromUrl, []);
 
   const [mode, setMode] = useState<"landing" | "join" | "saved">(linkCode ? "join" : "landing");
@@ -409,9 +426,13 @@ export default function Index() {
 
     if (everyoneFinished(room)) {
       const matches = groupMatches(room);
+      // every genre anyone picked, e.g. ["Romance", "Comedy", "Drama"]
+      const allGenres = [...new Set(ids.flatMap((id) => moodOf(room, id).genres))]
+        .map((g) => GENRES.find((x) => x.id === g)?.title ?? "")
+        .filter(Boolean);
       return (
         <ResultsScreen
-          genreTitle={room.genre?.title ?? ""}
+          genreTitle={allGenres.length ? allGenres.join(", ") : room.genre?.title ?? ""}
           names={names}
           matches={matches.map((m) => m.movie)}
           votes={Object.fromEntries(matches.map((m) => [m.movie.id, m.yes]))}
@@ -522,4 +543,5 @@ export default function Index() {
 
 const s = StyleSheet.create({
   splash: { flex: 1, backgroundColor: C.bg, alignItems: "center", justifyContent: "center" },
+  splashError: { color: C.muted, fontSize: 15, textAlign: "center", paddingHorizontal: 40 },
 });
