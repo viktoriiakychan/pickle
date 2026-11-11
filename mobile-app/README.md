@@ -1,56 +1,82 @@
-# Welcome to your Expo app 👋
+# Pickle 🥒
+ 
+**Pick a movie, together or on your own.** Swipe through a deck of movies picked for your mood. With friends, Pickle shows what you all said yes to. Solo, it's a quick way to find something you actually want to watch. No more scrolling for an hour.
+ 
+**Try it:** [pickle-movies.web.app](https://pickle-movies.web.app). Free, no sign-up, works in the browser on your phone or laptop.
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+![Pickle](mobile-app/public/preview.png)
+ 
+## How it works
+ 
+**With friends**
+1. **Start a room** and send your friends the link or the 6-letter code (up to 10 people).
+2. **Everyone picks a genre** (up to 2 each). A "Not tonight" veto removes a genre for the whole group.
+3. **Swipe** through a deck of 20 movies built from everyone's picks: right to pick, left to pass.
+4. **See your matches**, the movies everyone picked, best first. Can't decide? **Pick for us** spins and chooses one for the whole room.
 
-## Get started
+**Solo**
+1. Tap **swipe solo**, pick up to 2 genres (or "Surprise me").
+2. Swipe through 20 movies matched to your taste.
+3. Your picks become your shortlist, and **Pick for us** chooses one if you can't decide.
 
-1. Install dependencies
 
-   ```bash
-   npm install
-   ```
+## Features
+ 
+- **Phone or laptop.** Runs in any browser, nothing to install. Swipe with your finger, or drag with the mouse and use the buttons.
+- **Live rooms.** Everyone's progress, genre picks and the final pick update instantly on every phone.
+- **Smart decks.** Mixes everyone's genres fairly and skips movies anyone in the room has already seen. Uses a short taste quiz to match how much of a film buff you are.
+- **Flip a card for details:** a trailer preview (with a scrubbable progress bar), cast, genres and where to stream it.
+- **"I've already seen it"** swaps in a fresh card for the whole group, highlighted in green so everyone knows why the deck grew.
+- **Undo** a swipe, plus a short swipe and flip tutorial on your first visit.
+- **Saved matches.** Every night's matches are kept, and you can tick off the ones you've watched.
+- **Secure.** Anonymous sign-in with Firestore security rules: you can only change your own profile and rooms you're in. Rooms delete themselves after 24 hours.
 
-2. Start the app
+## Tech stack
+ 
+| | |
+|---|---|
+| App | React Native + Expo (Expo Router), TypeScript, React Native Web |
+| Backend | Firebase: Cloud Firestore (real-time sync), Anonymous Auth, Hosting |
+| Data | [TMDB API](https://www.themoviedb.org/) for movies, YouTube embeds for trailers |
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+## Run it locally
+ 
 ```bash
-npm run reset-project
+cd mobile-app
+npm install
 ```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+ 
+Create `mobile-app/.env`:
+ 
+```
+EXPO_PUBLIC_TMDB_API_KEY=your_tmdb_key
+EXPO_PUBLIC_FIREBASE_API_KEY=...
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=...
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+EXPO_PUBLIC_FIREBASE_APP_ID=...
+```
+ 
+In your Firebase project, turn on Firestore and **Anonymous** sign-in, then:
+ 
+```bash
+npx expo start --web
+```
+ 
+## Project structure
+ 
+```
+mobile-app/
+  src/app/                 entry point and screen flow
+  src/components/screens/  one file per screen (lobby, genres, swipe, results, saved…)
+  src/lib/                 rooms (Firestore), TMDB, sign-in, saved matches
+  public/                  page template and link preview image
+prototype/                 the first version: a Python command-line prototype
+```
+ 
+---
+ 
+Movie data from [TMDB](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
+ 
+Made by [Viktoriia Kychan](https://www.linkedin.com/in/viktoriia-kychan/).
