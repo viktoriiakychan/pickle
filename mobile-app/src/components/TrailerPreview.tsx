@@ -56,7 +56,7 @@ export default function TrailerPreview({
   const [playing, setPlaying] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
   const [broken, setBroken] = useState(false);
-  const [time, setTime] = useState(0); // seconds into the trailer (from YouTube)
+  const [time, setTime] = useState(SKIP_INTRO);
   const [duration, setDuration] = useState(0); // trailer length in seconds (0 = not known yet)
 
   // where this trailer starts: 0:10, or 0:00 for short teasers
@@ -84,7 +84,7 @@ export default function TrailerPreview({
     }, FALLBACK_MS);
   };
 
-  // new trailer → start fresh
+  // new trailer -> start fresh
   useEffect(() => {
     ready.current = false;
     heard.current = false;
@@ -92,7 +92,7 @@ export default function TrailerPreview({
     setPlaying(false);
     setUserPaused(false);
     setBroken(false);
-    setTime(0);
+    setTime(SKIP_INTRO);
     setDuration(0);
     progress.setValue(0);
     barIn.setValue(0);
@@ -134,7 +134,7 @@ export default function TrailerPreview({
   // and while playing it keeps moving on its own at real speed until the next update
   useEffect(() => {
     if (!duration || dragging.current) return;
-    const at = Math.min(Math.max(time, startAt), duration);
+    const at = Math.min(Math.max(time, 0), duration);
     progress.stopAnimation();
     progress.setValue(at / duration);
     if (playing && at < duration) {
@@ -360,7 +360,7 @@ export default function TrailerPreview({
 
       <View style={s.below}>
         <Animated.Text style={[s.timeText, { opacity: barIn }]}>
-          {duration > 0 ? `${fmt(dragTime ?? Math.max(time, startAt))} / ${fmt(duration)}` : " "}
+          {duration > 0 ? `${fmt(dragTime ?? time)} / ${fmt(duration)}` : " "}
         </Animated.Text>
         {youtubeLink}
       </View>

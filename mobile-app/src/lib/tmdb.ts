@@ -43,7 +43,7 @@ export type Movie = {
   backdrop: string | null;
   tagline: string;
   tag?: MovieTag;
-  addedBy?: { id: string; name: string }; // extra card: added mid-round because this person had seen one
+  addedBy?: { id: string; name: string; replaces?: string }; // extra card: added mid-round because this person had seen one
 };
 
 export type MovieDetails = {

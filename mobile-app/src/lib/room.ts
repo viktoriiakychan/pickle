@@ -200,7 +200,14 @@ export function everyoneFinished(room: Room): boolean {
 }
 
 export const addToDeck = (code: string, movie: Movie) =>
-  updateDoc(roomRef(code), { deck: arrayUnion(movie) });
+  runTransaction(db, async (tx) => {
+    const snap = await tx.get(roomRef(code));
+    const deck: Movie[] = snap.data()?.deck ?? [];
+    const replaces = movie.addedBy?.replaces;
+    if (replaces && deck.some((m) => m.addedBy?.replaces === replaces)) return; // already replaced
+    if (deck.some((m) => m.id === movie.id)) return; // already in the deck
+    tx.update(roomRef(code), { deck: [...deck, movie] });
+});
 
 export type Match = { movie: Movie; yes: number; of: number };
 

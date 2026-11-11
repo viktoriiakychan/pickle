@@ -28,7 +28,7 @@ import { buildDeck, fetchReplacement, MAX_DECK, whereToWatchUrl, Movie, GENRES }
 import { markSeen, unmarkSeen, 
     getTaste, saveFavs, saveLevel, Taste, roomTaste,
     markTasteDone, Level, markLiked, unmarkLiked } from "../lib/seen";
-import { getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
+import { freshStartOnce, getRoomFromUrl, getSavedRoom, roomLink, saveRoom } from "../lib/identity";
 import {
   Room,
   createRoom,
@@ -56,6 +56,7 @@ import { nightId, saveNight } from "../lib/savedMatches";
 const NO_TASTE = () => ({ seen: new Set<string>(), favs: [] as string[], level: "casual" as Level });
 
 // Sign in first (invisible, takes a moment), then run the app with that id
+freshStartOnce(); 
 export default function Index() {
   const { uid, failed } = useUserId();
   if (!uid) {
@@ -303,6 +304,7 @@ function App({ myId }: { myId: string }) {
     markSeen(myId, movie.id).catch(() => {});
     seenThisRound.current.add(movie.id);
     if (room.deck.length >= MAX_DECK) return; // safety limit
+    if (room.deck.some((m) => m.addedBy?.replaces === movie.id)) return; // someone already swapped this one in
 
     // don't add anything already in the deck, or seen by either of you
     const { seen: exclude, level } = await roomTaste(playerIds(room)).catch(NO_TASTE);
@@ -312,7 +314,7 @@ function App({ myId }: { myId: string }) {
     const plan = room.plan ?? { with: room.genre.id, without: "" }; // older rooms had one genre
     const extra = await fetchReplacement(plan, exclude, level).catch(() => null);
     // addedBy: the card shows up green, and everyone else gets a "+1 card" note
-    const by = { id: myId, name: room.players[myId]?.name ?? "Someone" };
+    const by = { id: myId, name: room.players[myId]?.name ?? "Someone", replaces: movie.id };
     if (extra) addToDeck(code, { ...extra, addedBy: by }).catch(() => {});
   };
 

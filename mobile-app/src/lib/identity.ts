@@ -82,3 +82,23 @@ export const setFlag = (key: string) => write(`pickle.flag.${key}`, "1");
 /** Simple counters on this device, e.g. how many times the swipe demo has played. */
 export const getCount = (key: string) => Number(read(`pickle.count.${key}`) ?? 0);
 export const bumpCount = (key: string) => write(`pickle.count.${key}`, String(getCount(key) + 1));
+
+/*
+ * One-time fresh start. Everything the app remembers in this browser lives under "pickle.…" keys.
+ * When RESET_VERSION changes, every browser that opens the app wipes them once (tutorials seen,
+ * saved matches, watched ticks, last room), so testers see Pickle like a first-time visitor.
+ * Change the version again any time you want another fresh start.
+ */
+const RESET_VERSION = "launch-1";
+const KEEP = ["pickle.uid", "pickle.version"]; // keep: used to carry over old profiles, and this check
+
+export function freshStartOnce() {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (localStorage.getItem("pickle.version") === RESET_VERSION) return; // already done in this browser
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("pickle.") && !KEEP.includes(k))
+      .forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem("pickle.version", RESET_VERSION);
+  } catch {}
+}
